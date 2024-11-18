@@ -1,0 +1,12 @@
+{
+    "search.exclude": {
+        "": true
+    },
+    "files.exclude": {
+        "": true
+    },
+    "search.useGlobalIgnoreFiles": true,
+    "files.associations": {
+        "*.cl": "cpp"
+    }
+}
