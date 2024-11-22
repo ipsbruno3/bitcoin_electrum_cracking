@@ -145,6 +145,8 @@ Our code is designed to map Bitcoin wallets efficiently, making the most of the 
 
 4. Address Comparison (Upcoming): Matches derived addresses with a clustered blockchain database for potential hits.
 
+5. Continuous use of long64 to save memory and reduce processing needs, significantly boosting the number of hashes per second.
+
   
   
   
