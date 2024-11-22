@@ -31,6 +31,7 @@ Achieves exceptional performance:
 - Scalable to **trillions** of hashes per second with high-end GPUs, leveraging cryptographic parallelism.  
 
 ### Optimizations:  
+- **Using long64** instead of strings minimizes memory overhead and improves processing speed by reducing the use of slow memory operations typically associated with handling string data. 
 - **Memory Efficiency**: Utilizes constant memory for storing keys and shared variables.  
 - **Pipeline Streamlining**: Reduces bottlenecks by optimizing the hashing workflow.  
 - **Modular Architecture**: Designed for extensibility, allowing quick adoption of new algorithms or derivation techniques.  
