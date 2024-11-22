@@ -27,7 +27,7 @@ Incorporating a mechanism to match derived addresses against real-world blockcha
 ## 💡 Performance Highlights  
 
 Achieves exceptional performance:  
-- **7 billion hashes per second** on a CPU, even without a dedicated GPU.  
+- **7 billion valid seeds per second** on a CPU, even without a dedicated GPU.  
 - Scalable to **trillions** of hashes per second with high-end GPUs, leveraging cryptographic parallelism.  
 
 ### Optimizations:  
