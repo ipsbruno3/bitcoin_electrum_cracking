@@ -1,17 +1,22 @@
 
+#define 128 128
+#define ROTR(x, n) ((x >> n) | (x << (64 - n)))
+
 #define SHA512_INIT {                             \
     0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL, \
     0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL, \
     0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL, \
     0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL}
 
-static const ulong SHA512_INIT_ARRAY[8] = {
+
+__constant ulong SHA512_INIT_ARRAY[8] = {
     0x6a09e667f3bcc908, 0xbb67ae8584caa73b,
     0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
     0x510e527fade682d1, 0x9b05688c2b3e6c1f,
     0x1f83d9abfb41bd6b, 0x5be0cd19137e2179};
 
-__constant static const ulong K[80] = {
+
+__constant ulong K[80] = {
     0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
     0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
     0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
@@ -91,41 +96,82 @@ void sha512_hash_large_message(ulong *message, uint total_blocks, ulong *H)
   }
 }
 
-#define ROTR(x, n) ((x >> n) | (x << (64 - n)))
-
-
-void hmac_mnemonic_sha512(ulong *KEY, uint KEY_BYTES, ulong *OUT)
+// HMAC-SHA512 Implementation
+void hmac_sha512(const ulong *key, uint key_len, const ulong *message, uint message_len, ulong *output)
 {
-    const ulong SALT[] = {0x6d6e656d6f6e6963ULL, 0x00000000180ULL};
-    ulong INNER_PAD[32], OUTER_PAD[32];
-    for (int i = 0; i < 32; i++) {
-        INNER_PAD[i] = 0x3636363636363636ULL;
-        OUTER_PAD[i] = 0x5C5C5C5C5C5C5C5CULL;
+  ulong key_block[32] = {0}; // Key block
+  ulong ipad[32];            // Inner pad
+  ulong opad[32];            // Outer pad
+  ulong inner_hash[8];                               // Inner hash result
+  ulong temp_hash[8];                                // Temporary hash
+  uint blocks = 2;
+  ulong inner_message[32];
+  ulong outer_message[32];
+
+  // Adjust or hash the key
+  if (key_len > 128)
+  {
+    sha512_hash_large_message(key, key_len / sizeof(ulong), key_block);
+    key_len = 64; // SHA-512 hash size in bytes
+  }
+  else
+  {
+    for (uint i = 0; i < 128 / sizeof(ulong); i++)
+    {
+      key_block[i] = (i < key_len / sizeof(ulong)) ? key[i] : 0;
     }
-    for (int i = 0; i < (KEY_BYTES + 7) / 8; i++) {
-        INNER_PAD[i] ^= KEY[i];
-        OUTER_PAD[i] ^= KEY[i];
-    }
-    INNER_PAD[(KEY_BYTES + 7) / 8] = SALT[0];
-    INNER_PAD[(KEY_BYTES + 7) / 8 + 1] = SALT[1];
-    INNER_PAD[31] = (KEY_BYTES + 13) * 8;
-    ulong OUTPUT_INNER[8] = SHA512_INIT;
-    sha512_hash_large_message(INNER_PAD, 2, OUTPUT_INNER);
-    for (int i = 0; i < 8; i++) OUTER_PAD[16 + i] = OUTPUT_INNER[i];
-    OUTER_PAD[31] = (KEY_BYTES + 13) * 8;
-    ulong OUTPUT_OUTER[8] = SHA512_INIT;
-    sha512_hash_large_message(OUTER_PAD, 2, OUTPUT_OUTER);
-    for (int i = 0; i < 8; i++) OUT[i] = OUTPUT_OUTER[i];
+  }
+
+  // Create ipad and opad
+  for (uint i = 0; i < 16; i++)
+  {
+    ipad[i] = key_block[i] ^ 0x3636363636363636ULL;
+    opad[i] = key_block[i] ^ 0x5c5c5c5c5c5c5c5cULL;
+  }
+
+  // Inner hash
+  for (uint i = 0; i < 128 / sizeof(ulong); i++)
+  {
+    inner_message[i] = ipad[i];
+  }
+  for (uint i = 0; i < blocks; i++)
+  {
+    inner_message[128 / sizeof(ulong) + i] = (i < blocks) ? message[i] : 0;
+  }
+  sha512_hash_large_message(inner_message, 128 / sizeof(ulong) + blocks, inner_hash);
+
+  // Outer hash
+  for (uint i = 0; i < 128 / sizeof(ulong); i++)
+  {
+    outer_message[i] = opad[i];
+  }
+  for (uint i = 0; i < 8; i++)
+  {
+    outer_message[128 / sizeof(ulong) + i] = inner_hash[i];
+  }
+  sha512_hash_large_message(outer_message, 128 / sizeof(ulong) + 8, temp_hash);
+
+  // Copy result to output
+  for (uint i = 0; i < 8; i++)
+  {
+    output[i] = temp_hash[i];
+  }
 }
 
+// Test Function
 void test_pbkdf()
 {
-    uchar input[] = "abandona abandona abandona abandona abandona";
-    uint len = strlen(input);
-    ulong output[32] = {0};
-    ulong tt[8] = SHA512_INIT;
-    uchar_to_ulong(input, strlen(input), output);
-    hmac_mnemonic_sha512(output, len, tt);
-    for (int i = 0; i < 8; i++) printf("%016lx  ", tt[i]);
-    printf("\n");
+  ulong key[] = {0x12345678abcdef00ULL, 0xdeadbeef12345678ULL, 0xabcdefabcdefabcdefULL};
+  uint key_len = sizeof(key);
+  ulong message[] = {0xabcdefabcdefabcdefULL, 0x1234567812345678ULL};
+  uint message_len = sizeof(message);
+  ulong output[8];
+
+  hmac_sha512(key, key_len, message, message_len, output);
+
+  for (int i = 0; i < 8; i++)
+  {
+    printf("%016lx ", output[i]);
+  }
+  printf("\n");
 }
