@@ -116,9 +116,9 @@ void hmac_sha512(const ulong *key, uint key_len, const ulong *message, uint mess
   }
   else
   {
-    for (uint i = 0; i < 128 / sizeof(ulong); i++)
+    for (uint i = 0; i < 128 ; i++)
     {
-      key_block[i] = (i < key_len / sizeof(ulong)) ? key[i] : 0;
+      key_block[i] = (i < key_len / 8)) ? key[i] : 0;
     }
   }
 
@@ -130,26 +130,26 @@ void hmac_sha512(const ulong *key, uint key_len, const ulong *message, uint mess
   }
 
   // Inner hash
-  for (uint i = 0; i < 128 / sizeof(ulong); i++)
+  for (uint i = 0; i < 16; i++)
   {
     inner_message[i] = ipad[i];
   }
   for (uint i = 0; i < blocks; i++)
   {
-    inner_message[128 / sizeof(ulong) + i] = (i < blocks) ? message[i] : 0;
+    inner_message[16+ i] = (i < blocks) ? message[i] : 0;
   }
-  sha512_hash_large_message(inner_message, 128 / sizeof(ulong) + blocks, inner_hash);
+  sha512_hash_large_message(inner_message,16 + blocks, inner_hash);
 
   // Outer hash
-  for (uint i = 0; i < 128 / sizeof(ulong); i++)
+  for (uint i = 0; i < 16; i++)
   {
     outer_message[i] = opad[i];
   }
   for (uint i = 0; i < 8; i++)
   {
-    outer_message[128 / sizeof(ulong) + i] = inner_hash[i];
+    outer_message[16+iS] = inner_hash[i];
   }
-  sha512_hash_large_message(outer_message, 128 / sizeof(ulong) + 8, temp_hash);
+  sha512_hash_large_message(outer_message, 24, temp_hash);
 
   // Copy result to output
   for (uint i = 0; i < 8; i++)
