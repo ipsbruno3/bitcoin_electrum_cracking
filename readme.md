@@ -1,13 +1,12 @@
 
+#  Bitcoin OpenCL Brute Force BIP39
+# 20 Million Hashes Per Second 🚀 
+
+  This is a specially optimized version for hashing and retrieving the last 6 mnemonic words for Bitcoin. The function compiles and optimizes SHA-256 and SHA-512 calculations directly on the processor, avoiding non-essential loops and optimizing cryptography without declaring additional or extra functions.
 
 
-## Fastest Bitcoin Seed Brute Forcer🚀 
 
-  
 
-Essa aqui é uma versão especialmente otimizada para fazer hash e pegar os últimos 6 palavras mnemonicas do Bitcoin.  A função compila e otimiza os cálculos sha256 e sha512 diretamente no processador evitando loops que não essenciais e otimizando a criptofia sem declarar funções adicionais e extras
-  
-  
 
  
  
@@ -96,9 +95,47 @@ Streamline cryptographic operations to eliminate unnecessary computational cycle
 Modularize code for quick adoption of new cryptographic standards or seed derivation techniques with bitwise operators
 
   
-  
+# 🚀 Why So Fast?
+
+Our tools use the smallest amount of memory possible. For example, for wallets, we work directly bit by bit instead of strings, ensuring efficiency.
+
+![image](https://github.com/user-attachments/assets/dfd58093-697e-4da5-a2d6-6a5b436b5af2)
+
+The `sha256` function is designed to process only one byte at a time, saving processing resources and making the system lighter.
+
+![image](https://github.com/user-attachments/assets/4e4a0b35-bc38-4e90-85bc-f16db26a75e0)
+
+Our goal is to map trillions of Bitcoin wallets in just a few days. This code successfully processes the first 11 seeds, defining the last one using a checksum with 1 chance in 128 (not 2048).
+
+![image](https://github.com/user-attachments/assets/417b4a00-e2f7-47ba-a808-51f514adae0e)
+
+We have optimized the maximum number of loops to make the code more fluid and efficient.
+
+![image](https://github.com/user-attachments/assets/ec580647-bdda-4ec9-ba44-646dbbb129b8)
+
+Before building our `pbkdf2 hmac sha512`, we precomputed `INNER_PAD` and `OUTER_PAD` to maximize efficiency.
+
+---
 
 ## 📖 How It Works
+
+1. **Efficiency with Bits and Bytes**:
+   - Working directly with bits saves memory and improves performance.
+   - Processing byte by byte reduces the overhead of string manipulation.
+
+2. **Wallet Mapping**:
+   - We reduced the search space by limiting the checksum to 1 in 128 combinations.
+   - This is crucial for processing large volumes of wallets quickly.
+
+3. **Precomputing Pads for PBKDF2**:
+   - Precomputing `INNER_PAD` and `OUTER_PAD` avoids repetitive calculations.
+   - The process becomes linear and faster.
+
+4. **Optimized Loops**:
+   - Reducing unnecessary cycles and optimizing parallelism (when possible) improves scalability.
+
+Our code is designed to map Bitcoin wallets efficiently, making the most of the available resources.
+
 
 1. Generate Mnemonic Seeds: Sequentially generates billions of BIP-39 mnemonic combinations in accordance with Bitcoin standards.
 
