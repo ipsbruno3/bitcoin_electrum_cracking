@@ -1,8 +1,15 @@
+
 #define SHA512_INIT {                             \
     0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL, \
     0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL, \
     0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL, \
     0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL}
+
+static const ulong SHA512_INIT_ARRAY[8] = {
+    0x6a09e667f3bcc908, 0xbb67ae8584caa73b,
+    0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
+    0x510e527fade682d1, 0x9b05688c2b3e6c1f,
+    0x1f83d9abfb41bd6b, 0x5be0cd19137e2179};
 
 __constant static const ulong K[80] = {
     0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
@@ -33,18 +40,18 @@ inline uchar to_hex_char(uint value)
 
 void sha512_hash_large_message(ulong *message, uint total_blocks, ulong *H)
 {
-  ulong W[80];
+  ulong W[80] = {0};
   ulong a, b, c, d, e, f, g, h;
   ulong S0, S1, ch, maj, temp1, temp2;
 
   for (uint block_idx = 0; block_idx < total_blocks; block_idx++)
   {
-    #pragma unroll
+#pragma unroll
     for (uint i = 0; i < 16; i++)
     {
       W[i] = message[block_idx * 16 + i];
     }
-    #pragma unroll
+#pragma unroll
     for (uint i = 16; i < 80; i++)
     {
       W[i] = W[i - 16] + (rotate_right(W[i - 15], 1) ^ rotate_right(W[i - 15], 8) ^ (W[i - 15] >> 7)) + W[i - 7] + (rotate_right(W[i - 2], 19) ^ rotate_right(W[i - 2], 61) ^ (W[i - 2] >> 6));
@@ -58,7 +65,7 @@ void sha512_hash_large_message(ulong *message, uint total_blocks, ulong *H)
     g = H[6];
     h = H[7];
 
-    #pragma unroll
+#pragma unroll
     for (uint i = 0; i < 80; i++)
     {
       temp1 = h + (rotate_right(e, 14) ^ rotate_right(e, 18) ^ rotate_right(e, 41)) + ((e & f) ^ (~e & g)) + K[i] + W[i];
@@ -84,208 +91,41 @@ void sha512_hash_large_message(ulong *message, uint total_blocks, ulong *H)
   }
 }
 
-void sha512_hash_with_padding(ulong *message, uint message_len_bytes, ulong *H)
+#define ROTR(x, n) ((x >> n) | (x << (64 - n)))
+
+
+void hmac_mnemonic_sha512(ulong *KEY, uint KEY_BYTES, ulong *OUT)
 {
-  uint blocks = ((message_len_bytes % 128 + 17) <= 128)
-                    ? (message_len_bytes / 128) + 1
-                    : (message_len_bytes / 128) + 2;
-  ulong padded_message[5 * 16] = {0};
-  uint message_len_ulongs = (message_len_bytes + 7) / 8;
-  for (uint i = 0; i < message_len_ulongs; i++)
-  {
-    padded_message[i] = message[i];
-  }
-  uint last_byte_index = message_len_bytes % 8;
-  if (last_byte_index == 0)
-  {
-    padded_message[message_len_ulongs] = 0x8000000000000000ULL;
-  }
-  else
-  {
-    padded_message[message_len_ulongs - 1] |= (0x80ULL << (56 - last_byte_index * 8));
-  }
-  padded_message[blocks * 16 - 1] = (ulong)(message_len_bytes * 8);
-  sha512_hash_large_message(padded_message, blocks, H);
-}
-
-/*
-void hmac_sha512_long(ulong *key, uint key_len, ulong *message, uint message_len, ulong *J)
-{
-  ulong key_block[64] = {0};
-  ulong inner_data[64] = {0};
-  ulong outer_data[64] = {0};
-  ulong inner_H[8] = SHA512_INIT;
-  uint key_ulongs = (key_len + 7) / 8;
-  for (uint i = 0; i < key_ulongs; i++)
-  {
-    key_block[i] = key[i];
-  }
-  for (uint i = 0; i < 16; i++)
-  {
-    inner_data[i] = key_block[i] ^ 0x3636363636363636ULL;
-    outer_data[i] = key_block[i] ^ 0x5C5C5C5C5C5C5C5CULL;
-  }
-  uint message_ulongs = (message_len + 7) / 8;
-  for (uint i = 0; i < message_ulongs; i++)
-  {
-    inner_data[16 + i] = message[i];
-  }
-  uint inner_message_len_bytes = 128 + message_len;
-  sha512_hash_with_padding(inner_data, inner_message_len_bytes, inner_H);
-  for (uint i = 0; i < 8; i++)
-  {
-    outer_data[16 + i] = inner_H[i];
-  }
-  sha512_hash_with_padding(outer_data, 192, J);
-}
-*/
-
-void hmac_sha512_long(ulong *key, uint key_len, ulong *message, uint message_len, ulong *output)
-{
-  ulong key_block[16] = SHA512_INIT;
-
-  ulong inner_data[32] = {0};
-  ulong outer_data[32] = {0};
-  ulong inner_H[8] = SHA512_INIT;
-
-  if (key_len > 128)
-  {
-    sha512_hash_with_padding(key, key_len, key_block); 
-  }
-  else
-  {
-    for (uint i = 0; i < 16; i++)
-    {
-      key_block[i] = 0;
+    const ulong SALT[] = {0x6d6e656d6f6e6963ULL, 0x00000000180ULL};
+    ulong INNER_PAD[32], OUTER_PAD[32];
+    for (int i = 0; i < 32; i++) {
+        INNER_PAD[i] = 0x3636363636363636ULL;
+        OUTER_PAD[i] = 0x5C5C5C5C5C5C5C5CULL;
     }
-    for (uint i = 0; i < (key_len + 7) / 8; i++)
-    {
-      key_block[i] = key[i];
+    for (int i = 0; i < (KEY_BYTES + 7) / 8; i++) {
+        INNER_PAD[i] ^= KEY[i];
+        OUTER_PAD[i] ^= KEY[i];
     }
-  }
-  for (uint i = 0; i < 16; i++)
-  {
-    inner_data[i] = key_block[i] ^ 0x3636363636363636ULL;
-    outer_data[i] = key_block[i] ^ 0x5C5C5C5C5C5C5C5CULL; 
-  }
-  uint message_ulongs = (message_len + 7) / 8;
-  for (uint i = 0; i < message_ulongs; i++)
-  {
-    inner_data[16 + i] = message[i];
-  }
-  uint inner_message_len_bytes = 128 + message_len;
-  sha512_hash_with_padding(inner_data, inner_message_len_bytes, inner_H);
-  uchar inner_H_uchar[64] = {0};
-  ulong_to_uchar(inner_H, 8, inner_H_uchar);
-  for (uint i = 0; i < 8; i++)
-  {
-    outer_data[16 + i] = inner_H[i];
-  }
-  sha512_hash_with_padding(outer_data, 128 + 64, output);
+    INNER_PAD[(KEY_BYTES + 7) / 8] = SALT[0];
+    INNER_PAD[(KEY_BYTES + 7) / 8 + 1] = SALT[1];
+    INNER_PAD[31] = (KEY_BYTES + 13) * 8;
+    ulong OUTPUT_INNER[8] = SHA512_INIT;
+    sha512_hash_large_message(INNER_PAD, 2, OUTPUT_INNER);
+    for (int i = 0; i < 8; i++) OUTER_PAD[16 + i] = OUTPUT_INNER[i];
+    OUTER_PAD[31] = (KEY_BYTES + 13) * 8;
+    ulong OUTPUT_OUTER[8] = SHA512_INIT;
+    sha512_hash_large_message(OUTER_PAD, 2, OUTPUT_OUTER);
+    for (int i = 0; i < 8; i++) OUT[i] = OUTPUT_OUTER[i];
 }
 
-
-
-void pbkdf2_hmac_sha512(ulong *password, uint password_len, uint iterations, uint dklen, ulong *output)
+void test_pbkdf()
 {
-  ulong F[8] = SHA512_INIT;
-  ulong T[8];
-  ulong salt_with_block[32] = {0};
-  uint blocks = (dklen + 63) / 64; 
-  uchar mnemonic[] = "mnemonic";
-  uint salt_len = sizeof(mnemonic) - 1;
-
-  uchar_to_ulong(mnemonic, salt_len, salt_with_block);
-  for (uint i = 1; i <= blocks; i++)
-  {
-    salt_with_block[1] = 0x0000000000000001ULL;
-
-    hmac_sha512_long(password, password_len, salt_with_block, salt_len + 8, F);
-
-    for (uint k = 0; k < 8; k++)
-    {
-      T[k] = F[k];
-    }
-
-    for (uint j = 1; j < iterations; j++)
-    {
-      ulong U[8] = SHA512_INIT;
-
-      hmac_sha512_long(password, password_len, F, 64, U);
-
-      for (uint k = 0; k < 8; k++)
-      {
-        T[k] ^= U[k];
-        F[k] = U[k];
-      }
-    }
-
-    for (uint k = 0; k < 8 && (i - 1) * 64 + k * 8 < dklen; k++)
-    {
-      uint remaining_bytes = dklen - (i - 1) * 64;
-      if (remaining_bytes >= 8)
-      {
-        output[(i - 1) * 8 + k] = T[k];
-      }
-      else
-      {
-        ulong mask = ~(0xFFFFFFFFFFFFFFFFULL >> (remaining_bytes * 8));
-        output[(i - 1) * 8 + k] &= mask;
-        output[(i - 1) * 8 + k] |= T[k] & ~mask;
-      }
-    }
-  }
+    uchar input[] = "abandona abandona abandona abandona abandona";
+    uint len = strlen(input);
+    ulong output[32] = {0};
+    ulong tt[8] = SHA512_INIT;
+    uchar_to_ulong(input, strlen(input), output);
+    hmac_mnemonic_sha512(output, len, tt);
+    for (int i = 0; i < 8; i++) printf("%016lx  ", tt[i]);
+    printf("\n");
 }
-
-
-
-
-void test_pbkdf2_hmac_sha512()
-{
-  uchar password[] = "password";
-  ulong password_converted[32] = {0};
-  ulong output[32] = {0};
-  uchar esperado[] = "f66872a6ab16966e3c739ea851b7eb0fe5bfd8bc9073fb9045b7338d3be7e50b195282fd4cd4b00bafc48a5974d8ccaf2b1e56f0c15abe9f6d87321fda767363";
-  uchar_to_ulong(password, 8, password_converted);
-  pbkdf2_hmac_sha512(password_converted, strlen(password), 2, 64, output);
-
-  printf("PBKDF2-HMAC-SHA512 OUTPUT:\n");
-  for (int i = 0; i < 8; i++)
-  {
-    printf("%016lx ", output[i]);
-  }
-  printf("\nEsperado: %s\n", esperado);
-}
-
-
-
-void test_uchar_to_ulong()
-{
-  uchar password[] = "password";
-  uchar salt[] = "salt";
-  ulong password_converted[32] = {0};
-  ulong salt_converted[32] = {0};
-
-  uint password_len = strlen(password);
-  uint salt_len = strlen(salt);      
-  uchar_to_ulong(password, password_len, password_converted);
-  uchar_to_ulong(salt, salt_len, salt_converted);
-
-  if (password_converted[0] == 0x70617373776f7264UL)
-  {
-    printf("UCHAR_TO_ULONG APROVADO\n");
-  }
-}
-
-
-
-void hash_to_hex_string(ulong *hash)
-{
-  printf("\n");
-  for (int i = 0; i < 8; i++)
-  {
-    printf("%016lx", hash[i]);
-  }
-  printf("\n");
-}
-

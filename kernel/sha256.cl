@@ -47,26 +47,37 @@ uchar sha256_from_ulong(ulong max, ulong min)
     w[4] = 0x80000000;
     w[15] = 128;
 
-    #pragma unroll
+#pragma unroll
     for (int i = 16; i < 64; ++i)
     {
         w[i] = w[i - 16] + ((ROTR_256(w[i - 15], 7)) ^ (ROTR_256(w[i - 15], 18)) ^ (w[i - 15] >> 3)) + w[i - 7] + ((ROTR_256(w[i - 2], 17)) ^ (ROTR_256(w[i - 2], 19)) ^ (w[i - 2] >> 10));
     }
 
-    a = H0;    b = H1;
-    c = H2;    d = H3;
-    e = H4;    f = H5;
-    g = H6;    h = H7;
-    
-    #pragma unroll
+    a = H0;
+    b = H1;
+    c = H2;
+    d = H3;
+    e = H4;
+    f = H5;
+    g = H6;
+    h = H7;
+
+#pragma unroll
     for (int i = 0; i < 63; ++i)
     {
 
         temp1 = h + ((ROTR_256(e, 6)) ^ (ROTR_256(e, 11)) ^ (ROTR_256(e, 25))) + ((e & f) ^ ((~e) & g)) + K_256[i] + w[i];
         temp2 = ((ROTR_256(a, 2)) ^ (ROTR_256(a, 13)) ^ (ROTR_256(a, 22))) + ((a & b) ^ (a & c) ^ (b & c));
-        h = g; g = f; f = e; e = d + temp1; d = c;  c = b;  b = a;  a = temp1 + temp2;
+        h = g;
+        g = f;
+        f = e;
+        e = d + temp1;
+        d = c;
+        c = b;
+        b = a;
+        a = temp1 + temp2;
     }
-  
+
     temp1 = (h + ((ROTR_256(e, 6)) ^ (ROTR_256(e, 11)) ^ (ROTR_256(e, 25))) + ((e & f) ^ ((~e) & g)) + K_256[63] + w[63]);
     temp2 = (((ROTR_256(a, 2)) ^ (ROTR_256(a, 13)) ^ (ROTR_256(a, 22))) + ((a & b) ^ (a & c) ^ (b & c)));
 
@@ -74,27 +85,3 @@ uchar sha256_from_ulong(ulong max, ulong min)
 
     return (uchar)(((H0 + a) >> 24) & 0xFF);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

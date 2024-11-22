@@ -3,6 +3,9 @@ import pyopencl as cl
 from mnemonic import Mnemonic
 import hashlib
 import time
+import hmac
+
+
 
 mnemo = Mnemonic("english")
 BATCH_SIZE = 1
@@ -11,56 +14,53 @@ WORKERS = 1
 
 
 import hashlib
-
-import hashlib
 import hmac
 
-def pbkdf2_hmac_sha512(password, salt, iterations, dklen):
-    def hmac_sha512(key, data):
-        # HMAC-SHA512 usando a biblioteca padrão
-        return hmac.new(key, data, hashlib.sha512).digest()
+def create_inner_pad(key: bytes, salt: bytes, block_size: int = 128) -> bytes:
+    # Constantes da máscara
+    MASK_INNER = 0x36
 
-    blocks = (dklen + 63) // 64  # Número de blocos necessários
-    derived_key = b""
+    # Tamanho total: bloco + salt + comprimento em bits (16 bytes)
+    total_len = block_size + len(salt) + 16
 
-    print(f"Password: {password.hex()}")
-    print(f"Salt: {salt.hex()}")
-    print(f"Iterations: {iterations}")
-    print(f"Key Length (dklen): {dklen}")
-    print(f"Blocks: {blocks}\n")
+    # Inicializa o bloco com máscara INNER
+    inner_pad = bytearray([MASK_INNER] * total_len)
 
-    for block in range(1, blocks + 1):
-        # Concatenar bloco ao salt
-        block_data = salt + block.to_bytes(4, 'big')
-        print(f"Python Block {block}: {block_data.hex()}")
+    # XOR da chave com a máscara e substituição no bloco
+    for i in range(len(key)):
+        inner_pad[i] = key[i] ^ MASK_INNER
 
-        # Calcular F (primeira iteração do HMAC-SHA512)
-        T = hmac_sha512(password, block_data)
-        print(f"Python Initial T (HMAC result for block {block}): {T.hex()}")
+    # Adiciona o salt imediatamente após a chave
+    salt_start_index = len(key)
+    for i in range(len(salt)):
+        inner_pad[salt_start_index + i] = salt[i]
 
-        F = T
-        for i in range(1, iterations):
-            # Iterar para obter T atualizado
-            U = hmac_sha512(password, F)
-            print(f"Python Iteration {i} - U: {U.hex()}")
-            T = bytes(x ^ y for x, y in zip(T, U))
-            print(f"Python Iteration {i} - T: {T.hex()}")
-            F = U
+    # Preenche os últimos 8 bytes com o comprimento total em bits
+    length_in_bits = (len(key) + len(salt)) * 8
+    length_bytes = length_in_bits.to_bytes(8, byteorder='big')
+    length_start_index = total_len - 8
+    for i in range(8):
+        inner_pad[length_start_index + i] = length_bytes[i]
 
-        derived_key += T
-        print(f"Python Block {block} Result: {T.hex()}\n")
+    return bytes(inner_pad)
 
-    return derived_key[:dklen]
 
-# Entradas
-password = b"password"  # Exemplo de senha
-mnemonic = b"mnemonic"
-dklen = 64  # Tamanho desejado da chave derivada (512 bits)
-iterations = 2  # Número de iterações do HMAC
+def test_inner_pad():
+    # Entrada de teste
+    key = b"abandona abandona abandona abandona abandona"
+    salt = b"mnemonic\0\0\0\1\x80"
 
-# Executar a função com logs intermediários
-derived_key = pbkdf2_hmac_sha512(password, mnemonic, iterations, dklen)
-print("Derived Key (Final Python):", derived_key.hex())
+    # Construção do INNER_PAD
+    inner_pad = create_inner_pad(key, salt)
+
+    # Impressão em formato hexadecimal
+    print("INNER_PAD:")
+    print(' '.join(f"{x:02x}" for x in inner_pad))
+
+
+# Executa o teste
+test_inner_pad()
+
 
 
 def main():
@@ -81,7 +81,6 @@ def main():
         return
     
     print("Programa OpenCL compilado com sucesso.")
-
     try:
         run_kernel(program, queue, indices, BATCH_SIZE)
         print("Kernel executado com sucesso.")
@@ -91,6 +90,10 @@ def load_program_source(filename):
     with open(filename, 'r') as f:
         return f.read()
 
+
+
+
+        
 def initialize_opencl():
     try:
         platform = cl.get_platforms()[0]
@@ -102,11 +105,19 @@ def initialize_opencl():
         print(f"Erro ao inicializar o OpenCL: {e}")
         return None, None
 
+
+
+
+
 def build_program(context, *filenames):
     source_code = ""
     for filename in filenames:
         source_code += load_program_source(filename) + "\n\n\n";
     return cl.Program(context, source_code).build()
+
+
+
+
 
 def words_to_indices(words):
     indices = []
@@ -115,26 +126,45 @@ def words_to_indices(words):
             indices.append(mnemo.wordlist.index(word))
     return np.array(indices, dtype=np.int32)
 
+
+
+
+
 def calculate_checksum(entropy_bytes):
     return hashlib.sha256(entropy_bytes).digest()[0]
+
+
+
+
 
 def get_binary_string(mnemonic_indices):
     mnemonic_indices = words_to_indices(mnemonic_indices)
     binary_string = ''.join(f"{index:011b}" for index in mnemonic_indices)
     return binary_string
 
+
+
+
+
 def mnemonic_to_uint64_pair(mnemonic_indices):
     binary_string = get_binary_string(mnemonic_indices)[:-4]
     return binary_string_to_uint64(binary_string)
+
+
+
+
 
 def binary_string_to_uint64(binary_string):
     high = int(binary_string[:64], 2)
     low = int(binary_string[64:], 2)
     combined_bytes = high.to_bytes(8, byteorder='big') + low.to_bytes(8, byteorder='big')
     checksum = hashlib.sha256(combined_bytes).digest()[0]
-
     sha256_full = hashlib.sha256(combined_bytes).hexdigest()
     return high, low
+
+
+
+
 
 def run_kernel(program, queue, indices, batch_size):
     context = program.context
@@ -145,13 +175,10 @@ def run_kernel(program, queue, indices, batch_size):
     wordlist_buffer = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=wordlist_string)
     output_data = np.empty(12, dtype=np.int32)
     output_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, output_data.nbytes)
-   
     start_time = time.time()
     kernel = program.generate_combinations
     kernel.set_args(indices_buffer, wordlist_buffer, np64, np.uint64(batch_size), output_buffer)
-    
     global_size = (WORKERS,)
-   
     cl.enqueue_nd_range_kernel(queue, kernel, global_size, None)
     cl.enqueue_copy(queue, output_data, output_buffer).wait()
     end_time = time.time()
@@ -161,6 +188,10 @@ def run_kernel(program, queue, indices, batch_size):
     print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:.6f} por seg")
     return output_data
 
+
+
+
+
 def calculate_possible_12th_words(binary_string):
     binary_string = binary_string.zfill(128)
     entropy_bytes = int(binary_string, 2).to_bytes(16, byteorder='big')
@@ -168,7 +199,6 @@ def calculate_possible_12th_words(binary_string):
     combined_bits = binary_string + checksum_bits
     index_12th_word = int(combined_bits[-11:], 2)
     word_12th = mnemo.wordlist[index_12th_word]
-
     return word_12th, index_12th_word
 
 if __name__ == "__main__":
