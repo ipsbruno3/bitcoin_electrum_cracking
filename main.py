@@ -13,53 +13,10 @@ FIXED_WORDS = "squirrel civil denial manage host wire abandon abandon abandon ab
 WORKERS = 1
 
 
-import hashlib
-import hmac
-
-def create_inner_pad(key: bytes, salt: bytes, block_size: int = 128) -> bytes:
-    # Constantes da máscara
-    MASK_INNER = 0x36
-
-    # Tamanho total: bloco + salt + comprimento em bits (16 bytes)
-    total_len = block_size + len(salt) + 16
-
-    # Inicializa o bloco com máscara INNER
-    inner_pad = bytearray([MASK_INNER] * total_len)
-
-    # XOR da chave com a máscara e substituição no bloco
-    for i in range(len(key)):
-        inner_pad[i] = key[i] ^ MASK_INNER
-
-    # Adiciona o salt imediatamente após a chave
-    salt_start_index = len(key)
-    for i in range(len(salt)):
-        inner_pad[salt_start_index + i] = salt[i]
-
-    # Preenche os últimos 8 bytes com o comprimento total em bits
-    length_in_bits = (len(key) + len(salt)) * 8
-    length_bytes = length_in_bits.to_bytes(8, byteorder='big')
-    length_start_index = total_len - 8
-    for i in range(8):
-        inner_pad[length_start_index + i] = length_bytes[i]
-
-    return bytes(inner_pad)
 
 
-def test_inner_pad():
-    # Entrada de teste
-    key = b"abandona abandona abandona abandona abandona"
-    salt = b"mnemonic\0\0\0\1\x80"
-
-    # Construção do INNER_PAD
-    inner_pad = create_inner_pad(key, salt)
-
-    # Impressão em formato hexadecimal
-    print("INNER_PAD:")
-    print(' '.join(f"{x:02x}" for x in inner_pad))
 
 
-# Executa o teste
-test_inner_pad()
 
 
 

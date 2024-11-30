@@ -13,8 +13,6 @@ void load_words_to_private(uchar *wordlist, uchar *words, ushort *word_lengths)
   }
 }
 
-
-
 __kernel void generate_combinations(__global uint *index, __global uchar *wordlist, __global ulong *seed, ulong batchsize, __global ulong2 *output)
 {
   int idx = get_global_id(0);
@@ -47,8 +45,5 @@ __kernel void generate_combinations(__global uint *index, __global uchar *wordli
     indices[11] = ((seed_min << 57UL) >> 53UL);
   }
 
-
-
   test_pbkdf();
-
 }
