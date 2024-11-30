@@ -206,22 +206,37 @@ void hmac_sha512_long(ulong *key, uint key_len, ulong *message, uint message_len
   sha512_hash_with_padding(outer_data, outer_message_len_bytes, J);
 }
 
-void test_pbkdf()
-{
-  ulong output[] = SHA512_INIT;
-  uchar input[] = "abc";
-  uchar chave[] = "abc";
-  ulong inputlong[32];
-  ulong inputl[32];
+void test_pbkdf() {
+    // Define the ranges of string lengths
+    uint ranges[2][2] = {{115, 135}, {245, 256}};
+    
+    // Iterate over each range
+    for (uint range_idx = 0; range_idx < 2; range_idx++) {
+        uint start = ranges[range_idx][0];
+        uint end = ranges[range_idx][1];
 
-  uchar_to_ulong(input, strlen(input), inputlong);
-  uchar_to_ulong(chave, strlen(chave), inputl);
+        for (uint len = start; len <= end; len++) {
+            // Create the string ('a' repeated `len` times)
+            uchar message[256] = {0};
+            for (uint i = 0; i < len; i++) {
+                message[i] = 'a';
+            }
 
-  hmac_sha512_long(inputlong, strlen(input), inputl, strlen(chave), output);
+            // Initialize the SHA-512 state
+            ulong H[8];
+            for (int i = 0; i < 8; i++) {
+                H[i] = SHA512_INIT[i];
+            }
 
-  for (int i = 0; i < 8; i++)
-  {
-    printf("%016lx", output[i]);
-  }
-  printf("\n");
+            // Compute the SHA-512 hash
+            sha512_hash_with_padding((ulong *)message, len, H);
+
+            // Print the hash directly
+            printf("Length %u: ", len);
+            for (int i = 0; i < 8; i++) {
+                printf("%016lx", H[i]);
+            }
+            printf("\n");
+        }
+    }
 }
