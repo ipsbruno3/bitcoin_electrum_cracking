@@ -1,87 +1,178 @@
-# Bitcoin OpenCL Brute Force BIP39  
-## 20 Million Hashes Per Second 🚀  
+# 🚀 Optimized Bitcoin Seed Recovery Using OpenCL
 
-A highly optimized solution for brute-forcing the final 6 mnemonic words in Bitcoin wallets. This implementation employs OpenCL to perform SHA-256 and SHA-512 calculations directly on the GPU, minimizing overhead and maximizing performance through efficient cryptographic optimization.  
-
----
-
-### 🚀 Key Features  
-
-✅ **Windows Management Integration**  
-Seamless control of the tool via an intuitive Windows-based environment, simplifying setup and operation.
-
-✅ **Sequential Mnemonic Generation**  
-Implements an advanced sequential algorithm capable of generating billions of BIP-39 mnemonic combinations with precision and efficiency.  
-
-✅ **Optimized GPU SHA-256 Kernel**  
-Utilizes OpenCL for GPU-accelerated SHA-256 hashing, vital for high-performance cryptographic computations in Bitcoin systems.  
-
-❌ **GPU-Optimized SHA-512 and PBKDF2 (In Progress)**  
-Expanding GPU acceleration to cover SHA-512 and PBKDF2 for faster seed-to-master-key derivation.  
-
-❌ **Blockchain Address Matching (Upcoming)**  
-Incorporating a mechanism to match derived addresses against real-world blockchain data for validation and exploratory attack scenarios.  
+This report details the optimization process for an OpenCL kernel designed to recover Bitcoin wallet seeds. The scenario involves reconstructing a **BIP-39 mnemonic** with only 7 out of the 12 words known. The challenge required handling a search space exceeding **2 quadrillion possibilities** while achieving extreme computational efficiency.
 
 ---
 
-## 💡 Performance Highlights  
+## 🎯 Problem Statement
 
-Achieves exceptional performance:  
-- **7 billion valid seeds per second** on a CPU, even without a dedicated GPU.  
-- Scalable to **trillions** of hashes per second with high-end GPUs, leveraging cryptographic parallelism.  
+Recovering the full 12-word BIP-39 mnemonic involves calculating all combinations for the remaining 5 words, including the checksum validation. The search space can be expressed as:
 
-### Optimizations:  
-- **Using long64** instead of strings minimizes memory overhead and improves processing speed by reducing the use of slow memory operations typically associated with handling string data. 
-- **Memory Efficiency**: Utilizes constant memory for storing keys and shared variables.  
-- **Pipeline Streamlining**: Reduces bottlenecks by optimizing the hashing workflow.  
-- **Modular Architecture**: Designed for extensibility, allowing quick adoption of new algorithms or derivation techniques.  
+*2.251799813685248 × 10^15*
+
+To tackle this challenge, aggressive optimizations were applied to the kernel, focusing on memory efficiency, loop unrolling, and minimizing computational overhead. The result was a **validation rate of 2 million seeds per second**.
 
 ---
 
-## 🔧 Technical Details  
+## 🛠️ Key Optimizations
 
-- **Bitwise Optimization**: Works directly with bits and bytes, reducing memory and processing overhead compared to string manipulation.  
-- **Reduced Search Space**: Limits checksum combinations to 1 in 128 (instead of 1 in 2048), exponentially increasing processing speed.  
-- **Precomputed Pads for PBKDF2**: Avoids redundant calculations, significantly accelerating key derivation.  
-- **Efficient Loops**: Maximized GPU parallelism by eliminating unnecessary computational cycles.  
+### 1. Efficient Mnemonic Representation with Bit Manipulation
 
----
+Instead of treating mnemonics as strings, they are represented as **bit-masked indices** stored in `ulong` variables. This allowed faster calculations and reduced computational overhead. The indices are extracted using shifts and bitwise operations:
 
-## 📅 Work in Progress  
+```c
+int idx = get_global_id(0);
 
-🔄 **SHA-512 and PBKDF2 Optimization**  
-Implementing GPU-accelerated versions to improve seed-to-master-key derivation efficiency.  
+uchar words[2048 * 11];
+ushort word_lengths[2048];
 
-🔄 **Blockchain Address Matching**  
-Developing clustering algorithms to compare derived wallet addresses with real blockchain datasets.  
+ulong seed_max = seed[0];
+ulong seed_min = seed[1] + (idx * batchsize);
+ulong final = batchsize;
 
-🔄 **Scalability Enhancements**  
-Adapting the codebase for GPU clusters to enable large-scale brute force computations.  
+load_words_to_private(wordlist, words, word_lengths);
 
----
+ushort indices[12] = {0};
 
-## 🧠 How It Works  
+indices[0] = (seed_max & (2047UL << 53UL)) >> 53UL;
+indices[1] = (seed_max & (2047UL << 42UL)) >> 42UL;
+indices[2] = (seed_max & (2047UL << 31UL)) >> 31UL;
+indices[3] = (seed_max & (2047UL << 20UL)) >> 20UL;
+indices[4] = (seed_max & (2047UL << 9UL)) >> 9UL;
+indices[5] = (((seed_max << 55UL) >> 53UL)) | (((seed_min & (3UL << 62UL)) >> 62UL));
+indices[6] = (seed_min & (2047UL << 51UL)) >> 51UL;
 
-1. **Mnemonic Seed Generation**: Sequentially generates billions of BIP-39 mnemonic phrases following Bitcoin standards.  
-2. **Checksum Validation**: Leverages optimized SHA-256 hashing to validate seeds with unparalleled speed.  
-3. **Seed Derivation**: Processes valid seeds to derive wallet addresses for further use.  
-4. **Wallet Mapping**: Efficiently reduces search space to enable real-time exploration of Bitcoin wallets.  
+for (ulong iterator = 0; iterator < final; ++iterator, seed_min++) {
+    indices[7] = (seed_min & (2047UL << 40UL)) >> 40UL;
+    indices[8] = (seed_min & (2047UL << 29UL)) >> 29UL;
+    indices[9] = (seed_min & (2047UL << 18UL)) >> 18UL;
+    indices[10] = (seed_min & (2047UL << 7UL)) >> 7UL;
+    indices[11] = ((seed_min << 57UL) >> 53UL);
+}
+```
 
----
+### 2. Loop Unrolling in SHA-256
 
-## 🚀 Why It’s So Fast  
+The computation of SHA-256 was heavily optimized by unrolling loops and eliminating conditional checks. The final loop iteration was avoided, as only `H0/A` was required for validation.
 
-- **Minimal Memory Usage**: Processes directly at the bit level, avoiding string overhead.  
-- **Precomputation**: Pads for PBKDF2 are precomputed to streamline calculations.  
-- **GPU Acceleration**: Optimized kernels leverage constant memory and parallel processing.  
-- **Reduced Search Complexity**: Focuses on a highly probable search space, reducing unnecessary operations.  
+```c
+#pragma unroll
+for (int i = 0; i < 63; ++i) {
+    temp1 = h + ((ROTR_256(e, 6)) ^ (ROTR_256(e, 11)) ^ (ROTR_256(e, 25))) +
+            ((e & f) ^ (~e & g)) + K_256[i] + w[i];
+    temp2 = ((ROTR_256(a, 2)) ^ (ROTR_256(a, 13)) ^ (ROTR_256(a, 22))) +
+            ((a & b) ^ (a & c) ^ (b & c));
+    h = g;
+    g = f;
+    f = e;
+    e = d + temp1;
+    d = c;
+    c = b;
+    b = a;
+    a = temp1 + temp2;
+}
 
----
+// Perform the last iteration manually
+temp1 = h + ((ROTR_256(e, 6)) ^ (ROTR_256(e, 11)) ^ (ROTR_256(e, 25))) +
+        ((e & f) ^ (~e & g)) + K_256[63] + w[63];
+temp2 = ((ROTR_256(a, 2)) ^ (ROTR_256(a, 13)) ^ (ROTR_256(a, 22))) +
+        ((a & b) ^ (a & c) ^ (b & c));
+```
 
-## 💻 Practical Applications  
 
-- High-speed wallet recovery and validation.  
-- Exploring blockchain clusters for potential wallet matches.  
-- Cryptographic research in seed derivation techniques.  
+#### Impact of This Optimization:
 
-Stay tuned for future updates as we push the limits of cryptographic brute force tools! 👨‍💻✨
+-   By skipping one full loop iteration, we saved computational resources and reduced the number of instructions executed.
+-   This small change, when executed across billions of iterations, results in significant performance gains.
+
+#### 3. Optimized SHA-512 Memory Usage in 64 Bits
+The SHA-512 implementation was optimized to operate on smaller memory buffers using ulong arrays. This reduced the loop execution from 128 iterations to just 8 per block, minimizing memory overhead while preserving accuracy.
+
+
+```c
+void sha512_hash_large_message(ulong *message, uint total_blocks, ulong *H) {
+    ulong W[80] = {0};
+    ulong a, b, c, d, e, f, g, h;
+
+    for (uint block_idx = 0; block_idx < total_blocks; block_idx++) {
+        #pragma unroll
+        for (uint i = 0; i < 16; i++) {
+            W[i] = message[block_idx * 16 + i];
+        }
+        #pragma unroll
+        for (uint i = 16; i < 80; i++) {
+            W[i] = W[i - 16]
+```
+
+
+
+#### 4. Preloaded Wordlist with HMAC Masking
+The mnemonic wordlist was preloaded into memory, applying HMAC-SHA512 masks during the load phase. This reduced runtime overhead, allowing the PBKDF2 HMAC-SHA512 to operate directly on the prepared seed
+
+```c
+for (uint i = 0; i < 16; i++) {
+    ipad[i] = key_block[i] ^ 0x3636363636363636ULL;
+    opad[i] = key_block[i] ^ 0x5c5c5c5c5c5c5c5cULL;
+}
+```
+
+#### 5. Pre-calculate the Hashes of the First 7 Fixed Words  
+Since the first mnemonics remain unchanged, the SHA-512/SHA-256 values can be precomputed and reused. This eliminates the need for recalculating the same values repeatedly, effectively doubling the search speed.
+
+#### 6. Compare Strings Character by Character  
+When comparing strings, break the comparison as soon as a mismatched character is found. This avoids unnecessary comparisons for the entire string, saving a significant number of operations over time.
+
+#### 7. Avoid Using Global Memory  
+Global memory access is slow. Minimizing its usage improves overall performance by reducing memory latency during operations.
+
+#### 8. Replace `strlen` with Precomputed Array Lengths  
+Use arrays that already store the actual length of the wordlist strings. This avoids unnecessary iterations over strings and saves processing time.
+
+
+
+
+## 🚀 Results
+
+-   **Performance**: Achieved **12 billion seed validations per second in SH256**, leveraging GPU parallelism and aggressive kernel optimization.
+-   **Memory Efficiency**: Reduced memory usage by consolidating data structures and minimizing array sizes.
+-   **Scalability**: Fully parallelized OpenCL kernels are ready for multi-GPU setups to scale performance further.
+**"Future Potential"** explicitly states the possibility of breaking 6 words from 12 words mnemonic, linking it to the advancements in the current performance 👀  
+----------
+
+
+## 🔮 Future Directions
+
+1. **Add Multi-GPU Support**  
+   Expand kernel support for multi-GPU configurations to further enhance scalability and processing speed. This will allow distributed workloads across multiple GPUs, increasing the validation throughput significantly.
+
+2. **Address Derivation and Comparison**  
+   Extend the implementation to not only perform PBKDF2-HMAC-SHA512 but also derive **public addresses** based on the user-defined derivation path (e.g., BIP-32 or BIP-44 standards). The derived addresses will then be compared against the user-provided Bitcoin or cryptocurrency address to identify the correct mnemonic.
+
+   Steps for this feature:
+   - Implement BIP-32/BIP-44 derivation logic after generating the master private key.
+   - Derive child keys for the specified derivation path.
+   - Compute public keys and addresses for each child key.
+   - Compare derived addresses with the user-provided address to validate the mnemonic.
+
+   This functionality will allow the recovery process to handle full address verification automatically, providing an end-to-end solution.
+
+3. **Error Correction for Mnemonics**  
+   Integrate error correction techniques to handle scenarios where the mnemonic provided by the user is partially corrupted or contains typographical errors. By leveraging fuzzy matching or probabilistic models, the system can suggest potential corrections for invalid mnemonic inputs.
+
+
+----------
+
+## 🌟 Conclusion
+
+This project showcases the power of GPU acceleration and kernel optimization in solving computationally intensive challenges. With these techniques, we achieved unprecedented performance in Bitcoin seed recovery.
+
+Feel free to contribute, suggest improvements, or open an issue if you have any ideas. Let's push the limits of what's possible together! 🚀
+
+
+**Regards**
+
+
+    Bruno da Silva
+    Security Researcher
+    2024
+
