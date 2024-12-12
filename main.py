@@ -8,9 +8,10 @@ import hmac
 
 
 mnemo = Mnemonic("english")
-BATCH_SIZE = 1
-FIXED_WORDS = "squirrel civil denial manage host wire abandon abandon abandon abandon abandon".split()
-WORKERS = 1
+BATCH_SIZE = 100000
+
+FIXED_WORDS = "squirrel civil denial manage host wire love abandon abandon abandon abandon".split()
+WORKERS = 2048
 
 
 
@@ -69,7 +70,7 @@ def initialize_opencl():
 def build_program(context, *filenames):
     source_code = ""
     for filename in filenames:
-        source_code += load_program_source(filename) + "\n\n\n";
+        source_code += load_program_source(filename) + "\n\n\n"
     return cl.Program(context, source_code).build()
 
 
@@ -87,37 +88,15 @@ def words_to_indices(words):
 
 
 
-def calculate_checksum(entropy_bytes):
-    return hashlib.sha256(entropy_bytes).digest()[0]
-
-
-
-
-
-def get_binary_string(mnemonic_indices):
-    mnemonic_indices = words_to_indices(mnemonic_indices)
-    binary_string = ''.join(f"{index:011b}" for index in mnemonic_indices)
-    return binary_string
-
-
-
-
-
-def mnemonic_to_uint64_pair(mnemonic_indices):
-    binary_string = get_binary_string(mnemonic_indices)[:-4]
-    return binary_string_to_uint64(binary_string)
-
-
-
-
-
-def binary_string_to_uint64(binary_string):
+def mnemonic_to_uint64_pair(indices):
+    """Converte os índices em dois valores uint64: high e low."""
+    binary_string = ''.join(f"{index:011b}" for index in indices)[:-4]  # Remove os últimos 4 bits (checksum)
+    # Certifica que a string tem no mínimo 64 bits para high e low
+    binary_string = binary_string.ljust(128, '0')
     high = int(binary_string[:64], 2)
     low = int(binary_string[64:], 2)
-    combined_bytes = high.to_bytes(8, byteorder='big') + low.to_bytes(8, byteorder='big')
-    checksum = hashlib.sha256(combined_bytes).digest()[0]
-    sha256_full = hashlib.sha256(combined_bytes).hexdigest()
     return high, low
+
 
 
 
@@ -125,16 +104,15 @@ def binary_string_to_uint64(binary_string):
 
 def run_kernel(program, queue, indices, batch_size):
     context = program.context
-    high, low = mnemonic_to_uint64_pair(FIXED_WORDS)
+    high, low = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
     indices_buffer = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(indices, dtype=np.uint32))
     np64 = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([high, low], dtype=np.uint64))
-    wordlist_string = b''.join(word.encode('utf-8').ljust(8, b'\0') for word in mnemo.wordlist)
-    wordlist_buffer = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=wordlist_string)
+    print(f"String iniciada: {high}, {low}")
     output_data = np.empty(12, dtype=np.int32)
     output_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, output_data.nbytes)
     start_time = time.time()
     kernel = program.generate_combinations
-    kernel.set_args(indices_buffer, wordlist_buffer, np64, np.uint64(batch_size), output_buffer)
+    kernel.set_args(indices_buffer, np64, np.uint64(batch_size), output_buffer)
     global_size = (WORKERS,)
     cl.enqueue_nd_range_kernel(queue, kernel, global_size, None)
     cl.enqueue_copy(queue, output_data, output_buffer).wait()
@@ -142,21 +120,12 @@ def run_kernel(program, queue, indices, batch_size):
     elapsed_time = end_time - start_time
     seeds = WORKERS * batch_size
     media = seeds / elapsed_time
+    
     print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:.6f} por seg")
     return output_data
 
 
 
-
-
-def calculate_possible_12th_words(binary_string):
-    binary_string = binary_string.zfill(128)
-    entropy_bytes = int(binary_string, 2).to_bytes(16, byteorder='big')
-    checksum_bits = bin(int(hashlib.sha256(entropy_bytes).hexdigest(), 16))[2:].zfill(256)[:4]
-    combined_bits = binary_string + checksum_bits
-    index_12th_word = int(combined_bits[-11:], 2)
-    word_12th = mnemo.wordlist[index_12th_word]
-    return word_12th, index_12th_word
 
 if __name__ == "__main__":
     main()
