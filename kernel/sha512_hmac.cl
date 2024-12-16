@@ -94,87 +94,102 @@ void sha512_hash_with_padding(ulong *message, uint message_len_bytes, ulong *H)
   sha512_hash_large_message(padded_message, blocks, H);
 }
 
-#define SHA512_BLOCK_SIZE 128
-#define SHA512_HASH_SIZE 64
-
-void hmac_sha512_long(ulong *key, uint key_len, ulong *message, uint message_len, ulong *J)
+void hmac_sha512_long(ulong *inner_data, ulong *outer_data, ulong *message, uint message_len, ulong *J)
 {
-  ulong key_block[24] = {0};
-  ulong inner_data[32] = {0};
-  ulong outer_data[32] = {0};
-  ulong inner_H[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
-
-  if (key_len > SHA512_BLOCK_SIZE)
-  {
-    ulong reduced_key[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
-    sha512_hash_with_padding(key, key_len, reduced_key);
-    for (uint i = 0; i < 8; i++)
-    {
-      key_block[i] = reduced_key[i];
-    }
-    key_len = SHA512_HASH_SIZE;
-  }
-  else
-  {
-    uint key_ulongs = (key_len + 7) / 8;
-    for (uint i = 0; i <= key_ulongs; i++)
-    {
-      key_block[i] = key[i];
-    }
-  }
-
-  for (uint i = 0; i < 24; i++)
-  {
-    inner_data[i] = key_block[i] ^ 0x3636363636363636ULL;
-    outer_data[i] = key_block[i] ^ 0x5C5C5C5C5C5C5C5CULL;
-  }
-
   uint message_ulongs = (message_len + 7) / 8;
   for (uint i = 0; i < message_ulongs; i++)
   {
     inner_data[16 + i] = message[i];
   }
-
-  uint inner_message_len_bytes = 128 + message_len;
-  sha512_hash_with_padding(inner_data, inner_message_len_bytes, inner_H);
-
+  ulong inner_H[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
+  sha512_hash_with_padding(inner_data, 128 + message_len, inner_H);
+#pragma unroll
   for (uint i = 0; i < 8; i++)
   {
     outer_data[16 + i] = inner_H[i];
   }
-
   sha512_hash_with_padding(outer_data, 192, J);
 }
 
+void hmac_prepare(ulong *key_block, ulong *key, uint key_len, ulong *inner_data, ulong *outer_data)
+{
+  uint key_ulongs = (key_len + 7) / 8;
+
+  for (uint i = 0; i <= key_ulongs; i++)
+  {
+    key_block[i] = key[i];
+  }
+#pragma unroll
+  for (uint i = 0; i < 24; i++)
+  {
+    inner_data[i] = key_block[i] ^ 0x3636363636363636ULL;
+    outer_data[i] = key_block[i] ^ 0x5C5C5C5C5C5C5C5CULL;
+  }
+}
 void pbkdf2_hmac_sha512_long(
     ulong *password, uint password_len,
-    ulong *output)
+    ulong *T)
 {
-  const ulong mnemonic_salt[] = {
-      0x6d6e656d6f6e6963ULL, 
-      0x0000000100000000ULL 
-  };
-  const uint salt_len = 2;
-  const uint iterations = 2048;
+  ulong mnemonic_salt[] = {
+      0x6d6e656d6f6e6963ULL,
+      0x0000000100000000ULL};
 
-  ulong U[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
-  ulong T[8];
-  hmac_sha512_long(password, password_len, mnemonic_salt, 12, U);
+  ulong key_block[24] = {0};
+  ulong inner_data[32] = {0};
+  ulong outer_data[32] = {0};
 
-  for (uint i = 0; i < 8; i++) {
-    T[i] = U[i];
-  }
-  for (uint iteration = 1; iteration < iterations; iteration++)  {
-    ulong UX[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
-    hmac_sha512_long(password, password_len, U, SHA512_HASH_SIZE, UX);
+  hmac_prepare(key_block, password, password_len, inner_data, outer_data);
+  hmac_sha512_long(inner_data, outer_data, mnemonic_salt, 12, T);
+
+  ulong UX[8];
+  ulong U[8];
+  U[0] = T[0];
+  U[1] = T[1];
+  U[2] = T[2];
+  U[3] = T[3];
+  U[4] = T[4];
+  U[5] = T[5];
+  U[6] = T[6];
+  U[7] = T[7];
+  ulong inner_H[8];
+  for (uint iteration = 1; iteration < 2048; iteration++)
+  {
+    UX[0] = H0_SHA512;
+    inner_H[0] = H0_SHA512;
+    UX[1] = H1_SHA512;
+    inner_H[1] = H1_SHA512;
+    UX[2] = H2_SHA512;
+    inner_H[2] = H2_SHA512;
+    UX[3] = H3_SHA512;
+    inner_H[3] = H3_SHA512;
+    UX[4] = H4_SHA512;
+    inner_H[4] = H4_SHA512;
+    UX[5] = H5_SHA512;
+    inner_H[5] = H5_SHA512;
+    UX[6] = H6_SHA512;
+    inner_H[6] = H6_SHA512;
+    UX[7] = H7_SHA512;
+    inner_H[7] = H7_SHA512;
+
+#pragma unroll
+    for (uint i = 0; i < 8; i++)
+    {
+      inner_data[16 + i] = U[i];
+    }
+
+    sha512_hash_with_padding(inner_data, 192, inner_H);
+#pragma unroll
+    for (uint i = 0; i < 8; i++)
+    {
+      outer_data[16 + i] = inner_H[i];
+    }
+    sha512_hash_with_padding(outer_data, 192, UX);
+
+#pragma unroll
     for (uint i = 0; i < 8; i++)
     {
       T[i] ^= UX[i];
       U[i] = UX[i];
     }
-  }
-  for (uint i = 0; i < 8; i++)
-  {
-    output[i] = T[i];
   }
 }

@@ -1,18 +1,18 @@
 import numpy as np
 import pyopencl as cl
 from mnemonic import Mnemonic
-import hashlib
+
 import time
-import hmac
+
 
 mnemo = Mnemonic("english")
-BATCH_SIZE = 1000
+BATCH_SIZE = 100
 
 
 
 FIXED_WORDS = "leg floor love render render bad abandon abandon abandon abandon abandon abandoon".split()
 DESTINY_WALLET = "bc1qrgs8g7hn2qu8f5akjyyu8g7uxvxlpc4z0gupfx"
-WORKERS = 1024
+WORKERS = 4096
 
 print("Analisando: ", FIXED_WORDS)
 
@@ -104,22 +104,19 @@ def run_kernel(program, queue, indices, batch_size):
     high, low = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
     indices_buffer = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(indices, dtype=np.uint32))
     np64 = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([high, low], dtype=np.uint64))
-    print(f"String iniciada: {high}, {low}")
-    output_data = np.empty(12, dtype=np.int32)
-    output_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, output_data.nbytes)
-    start_time = time.time()
     kernel = program.generate_combinations
-    kernel.set_args(indices_buffer, np64, np.uint64(batch_size), output_buffer)
+    kernel.set_args(indices_buffer, np64, np.uint64(batch_size))
     global_size = (WORKERS,)
-    cl.enqueue_nd_range_kernel(queue, kernel, global_size, None)
-    cl.enqueue_copy(queue, output_data, output_buffer).wait()
+    start_time = time.time()
+    cl.enqueue_nd_range_kernel(queue, kernel, global_size, None).wait()
+    
     end_time = time.time()
     elapsed_time = end_time - start_time
     seeds = WORKERS * batch_size
     media = seeds / elapsed_time
     
     print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:.6f} por seg")
-    return output_data
+    return True
 
 
 
