@@ -63,14 +63,15 @@ __kernel void generate_combinations(__global uint *index, __global ulong *seed, 
     }
     mnemonic[mnemonic_index - 1] = 0;
 
-    ulong resultado_pbkdf2[16];
-    uchar_to_ulong(seed_char, mnemonic_length, seed);
+    ulong resultado_pbkdf2[8];
+    uchar_to_ulong(mnemonic, mnemonic_length, seed);
     pbkdf2_hmac_sha512_long(seed, mnemonic_length, resultado_pbkdf2);
 
     if (seed_min % 1000000 == 0)
     {
       printf("\n\nSEED: %s\nLEN: %d\n", mnemonic, mnemonic_length);
       DEBUG_ARRAY("PBKDF2: ", resultado_pbkdf2, 8);
+      DEBUG_ARRAY("MNEMONIC SEED: ", seed, 16);
     }
   }
 }
