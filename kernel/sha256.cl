@@ -42,7 +42,7 @@ uchar sha256_from_ulong(ulong max, ulong min)
   w[4] = 0x80000000;
   w[15] = 128;
 
-#pragma unroll
+  #pragma unroll
   for (int i = 16; i < 64; ++i)
   {
     w[i] = w[i - 16] +
@@ -62,7 +62,7 @@ uchar sha256_from_ulong(ulong max, ulong min)
   g = H6;
   h = H7;
 
-#pragma unroll
+  #pragma unroll
   for (int i = 0; i < 63; ++i)
   {
 

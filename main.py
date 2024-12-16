@@ -6,14 +6,16 @@ import time
 
 
 mnemo = Mnemonic("english")
-BATCH_SIZE = 100
+
 
 
 
 FIXED_WORDS = "leg floor love render render bad abandon abandon abandon abandon abandon abandoon".split()
 DESTINY_WALLET = "bc1qrgs8g7hn2qu8f5akjyyu8g7uxvxlpc4z0gupfx"
-WORKERS = 4096
 
+BATCH_SIZE = 10
+LOCAL_WORKERS = 24
+WORKERS = LOCAL_WORKERS*1024
 print("Analisando: ", FIXED_WORDS)
 
 
@@ -108,7 +110,7 @@ def run_kernel(program, queue, indices, batch_size):
     kernel.set_args(indices_buffer, np64, np.uint64(batch_size))
     global_size = (WORKERS,)
     start_time = time.time()
-    cl.enqueue_nd_range_kernel(queue, kernel, global_size, None).wait()
+    cl.enqueue_nd_range_kernel(queue, kernel, global_size, (LOCAL_WORKERS,)).wait()
     
     end_time = time.time()
     elapsed_time = end_time - start_time

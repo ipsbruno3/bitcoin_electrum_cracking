@@ -9,12 +9,12 @@ void sha512_hash_large_message(ulong *message, uint total_blocks, ulong *H)
 
   for (uint block_idx = 0; block_idx < total_blocks; block_idx++)
   {
-#pragma unroll
+    #pragma unroll
     for (uint i = 0; i < 16; i++)
     {
       W[i] = message[block_idx * 16 + i];
     }
-#pragma unroll
+    #pragma unroll
     for (uint i = 16; i < 80; i++)
     {
       W[i] = W[i - 16] +
@@ -32,7 +32,8 @@ void sha512_hash_large_message(ulong *message, uint total_blocks, ulong *H)
     f = H[5];
     g = H[6];
     h = H[7];
-#pragma unroll
+
+    #pragma unroll
     for (uint i = 0; i < 80; i++)
     {
       temp1 =
@@ -103,7 +104,7 @@ void hmac_sha512_long(ulong *inner_data, ulong *outer_data, ulong *message, uint
   }
   ulong inner_H[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
   sha512_hash_with_padding(inner_data, 128 + message_len, inner_H);
-#pragma unroll
+
   for (uint i = 0; i < 8; i++)
   {
     outer_data[16 + i] = inner_H[i];
@@ -111,19 +112,21 @@ void hmac_sha512_long(ulong *inner_data, ulong *outer_data, ulong *message, uint
   sha512_hash_with_padding(outer_data, 192, J);
 }
 
-void hmac_prepare(ulong *key_block, ulong *key, uint key_len, ulong *inner_data, ulong *outer_data)
+void hmac_prepare(ulong *key, uint key_len, ulong *inner_data, ulong *outer_data)
 {
   uint key_ulongs = (key_len + 7) / 8;
 
+  #pragma unroll
   for (uint i = 0; i <= key_ulongs; i++)
   {
-    key_block[i] = key[i];
+    inner_data[i] = key[i] ^ 0x3636363636363636ULL;
+    outer_data[i] = key[i] ^ 0x5C5C5C5C5C5C5C5CULL;
   }
 #pragma unroll
-  for (uint i = 0; i < 24; i++)
+  for (uint i = key_ulongs; i < 24; i++)
   {
-    inner_data[i] = key_block[i] ^ 0x3636363636363636ULL;
-    outer_data[i] = key_block[i] ^ 0x5C5C5C5C5C5C5C5CULL;
+    inner_data[i] = 0x3636363636363636ULL;
+    outer_data[i] = 0x5C5C5C5C5C5C5C5CULL;
   }
 }
 void pbkdf2_hmac_sha512_long(
@@ -134,11 +137,11 @@ void pbkdf2_hmac_sha512_long(
       0x6d6e656d6f6e6963ULL,
       0x0000000100000000ULL};
 
-  ulong key_block[24] = {0};
-  ulong inner_data[32] = {0};
-  ulong outer_data[32] = {0};
+  ulong key_block[24];
+  ulong inner_data[32];
+  ulong outer_data[32];
 
-  hmac_prepare(key_block, password, password_len, inner_data, outer_data);
+  hmac_prepare(password, password_len, inner_data, outer_data);
   hmac_sha512_long(inner_data, outer_data, mnemonic_salt, 12, T);
 
   ulong UX[8];
@@ -171,25 +174,38 @@ void pbkdf2_hmac_sha512_long(
     UX[7] = H7_SHA512;
     inner_H[7] = H7_SHA512;
 
-#pragma unroll
-    for (uint i = 0; i < 8; i++)
-    {
-      inner_data[16 + i] = U[i];
-    }
+    inner_data[16 + 0] = U[0];
+    inner_data[16 + 1] = U[1];
+    inner_data[16 + 2] = U[2];
+    inner_data[16 + 3] = U[3];
+    inner_data[16 + 4] = U[4];
+    inner_data[16 + 5] = U[5];
+    inner_data[16 + 6] = U[6];
+    inner_data[16 + 7] = U[7];
+    inner_data[24] = 0x8000000000000000ULL;
+    inner_data[31] = (ulong)(192*8);
+    sha512_hash_large_message(inner_data, 2, inner_H);
 
-    sha512_hash_with_padding(inner_data, 192, inner_H);
-#pragma unroll
-    for (uint i = 0; i < 8; i++)
-    {
-      outer_data[16 + i] = inner_H[i];
-    }
-    sha512_hash_with_padding(outer_data, 192, UX);
+    outer_data[16 + 0] = inner_H[0];
+    outer_data[16 + 1] = inner_H[1];
+    outer_data[16 + 2] = inner_H[2];
+    outer_data[16 + 3] = inner_H[3];
+    outer_data[16 + 4] = inner_H[4];
+    outer_data[16 + 5] = inner_H[5];
+    outer_data[16 + 6] = inner_H[6];
+    outer_data[16 + 7] = inner_H[7];
+    outer_data[24] = 0x8000000000000000ULL;
+    outer_data[31] = (ulong)(192*8);
 
-#pragma unroll
-    for (uint i = 0; i < 8; i++)
-    {
-      T[i] ^= UX[i];
-      U[i] = UX[i];
-    }
+    sha512_hash_large_message(outer_data, 2, UX);
+
+    T[0] ^= UX[0];    U[0] = UX[0];
+    T[1] ^= UX[1];    U[1] = UX[1];
+    T[2] ^= UX[2];    U[2] = UX[2];
+    T[3] ^= UX[3];    U[3] = UX[3];
+    T[4] ^= UX[4];    U[4] = UX[4];
+    T[5] ^= UX[5];    U[5] = UX[5];
+    T[6] ^= UX[6];    U[6] = UX[6];
+    T[7] ^= UX[7];    U[7] = UX[7];
   }
 }
