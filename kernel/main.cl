@@ -41,7 +41,7 @@ __kernel void generate_combinations(__global uint *index, __global ulong *seed, 
     mnemonic[mnemonic_index] = 32;
     mnemonic_index++;
   }
-  
+
   ulong mnemonic_5c[24];
   mnemonic_5c[0] = word_values_mask5c[indices[0]]; mnemonic_5c[1] = 0x20 ^0x5C;
   mnemonic_5c[2] = word_values_mask5c[indices[1]]; mnemonic_5c[3] = 0x20 ^0x5C;
@@ -51,6 +51,7 @@ __kernel void generate_combinations(__global uint *index, __global ulong *seed, 
   mnemonic_5c[10] = word_values_mask5c[indices[5]]; mnemonic_5c[11] = 0x20 ^0x5C;
   mnemonic_5c[12] = word_values_mask5c[indices[6]]; mnemonic_5c[13] = 0x20 ^0x5C;
 
+  ushort mnemonic_prefix_len = 11 + word_lengths[indices[0]] + word_lengths[indices[1]] + word_lengths[indices[2]] + word_lengths[indices[3]] + word_lengths[indices[4]] + word_lengths[indices[5]] + word_lengths[indices[6]];
   for (ulong iterator = 0; iterator < final; ++iterator, seed_min++)
   {
     indices[7] = (seed_min & (2047UL << 40UL)) >> 40UL;
@@ -59,9 +60,9 @@ __kernel void generate_combinations(__global uint *index, __global ulong *seed, 
     indices[10] = (seed_min & (2047UL << 7UL)) >> 7UL;
     indices[11] = ((seed_min << 57UL) >> 53UL) | sha256_from_ulong(seed_max, seed_min) >> 4;
 
-    uint mnemonic_length = 11 + word_lengths[indices[0]] + word_lengths[indices[1]] + word_lengths[indices[2]] + word_lengths[indices[3]] + word_lengths[indices[4]] + word_lengths[indices[5]] + word_lengths[indices[6]] + word_lengths[indices[7]] + word_lengths[indices[8]] + word_lengths[indices[9]] + word_lengths[indices[10]] + word_lengths[indices[11]];
+    uint mnemonic_length = mnemonic_prefix_len + word_lengths[indices[7]] + word_lengths[indices[8]] + word_lengths[indices[9]] + word_lengths[indices[10]] + word_lengths[indices[11]];
 
-    int mnemonic_index_ex = mnemonic_index;
+    int mnemonic_index_ex = mnemonic_prefix_len;
 #pragma unroll
     for (int i = 7; i < 12; i++)
     {
