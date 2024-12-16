@@ -29,9 +29,10 @@ __constant uint K_256[64] = {
 #define H6 0x1f83d9ab
 #define H7 0x5be0cd19
 
-uchar sha256_from_ulong(ulong max, ulong min) {
+uchar sha256_from_ulong(ulong max, ulong min)
+{
 
-      uint w[64] = {0};
+  uint w[64] = {0};
   uint a, b, c, d, e, f, g, h, temp1, temp2;
 
   w[0] = (max >> 32) & 0xFFFFFFFF;
@@ -42,7 +43,8 @@ uchar sha256_from_ulong(ulong max, ulong min) {
   w[15] = 128;
 
 #pragma unroll
-  for (int i = 16; i < 64; ++i) {
+  for (int i = 16; i < 64; ++i)
+  {
     w[i] = w[i - 16] +
            ((ROTR_256(w[i - 15], 7)) ^ (ROTR_256(w[i - 15], 18)) ^
             (w[i - 15] >> 3)) +
@@ -61,7 +63,8 @@ uchar sha256_from_ulong(ulong max, ulong min) {
   h = H7;
 
 #pragma unroll
-  for (int i = 0; i < 63; ++i) {
+  for (int i = 0; i < 63; ++i)
+  {
 
     temp1 = h + ((ROTR_256(e, 6)) ^ (ROTR_256(e, 11)) ^ (ROTR_256(e, 25))) +
             ((e & f) ^ ((~e) & g)) + K_256[i] + w[i];

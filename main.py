@@ -5,17 +5,16 @@ import hashlib
 import time
 import hmac
 
-
-
 mnemo = Mnemonic("english")
-BATCH_SIZE = 100000
-
-FIXED_WORDS = "squirrel civil denial manage host wire love abandon abandon abandon abandon".split()
-WORKERS = 2048
+BATCH_SIZE = 1000
 
 
 
+FIXED_WORDS = "leg floor love render render bad abandon abandon abandon abandon abandon abandoon".split()
+DESTINY_WALLET = "bc1qrgs8g7hn2qu8f5akjyyu8g7uxvxlpc4z0gupfx"
+WORKERS = 1024
 
+print("Analisando: ", FIXED_WORDS)
 
 
 
@@ -89,9 +88,7 @@ def words_to_indices(words):
 
 
 def mnemonic_to_uint64_pair(indices):
-    """Converte os índices em dois valores uint64: high e low."""
-    binary_string = ''.join(f"{index:011b}" for index in indices)[:-4]  # Remove os últimos 4 bits (checksum)
-    # Certifica que a string tem no mínimo 64 bits para high e low
+    binary_string = ''.join(f"{index:011b}" for index in indices)[:-4]  
     binary_string = binary_string.ljust(128, '0')
     high = int(binary_string[:64], 2)
     low = int(binary_string[64:], 2)

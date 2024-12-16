@@ -64,8 +64,7 @@ void sha512_hash_large_message(ulong *message, uint total_blocks, ulong *H)
   }
 }
 
-void sha512_hash_with_padding(ulong *message, uint message_len_bytes,
-                              ulong *H)
+void sha512_hash_with_padding(ulong *message, uint message_len_bytes, ulong *H)
 {
   uint message_len_ulongs = (message_len_bytes + 7) / 8;
   uint blocks = ((message_len_bytes % 128 + 17) <= 128)
@@ -95,101 +94,87 @@ void sha512_hash_with_padding(ulong *message, uint message_len_bytes,
   sha512_hash_large_message(padded_message, blocks, H);
 }
 
+#define SHA512_BLOCK_SIZE 128
+#define SHA512_HASH_SIZE 64
+
 void hmac_sha512_long(ulong *key, uint key_len, ulong *message, uint message_len, ulong *J)
 {
-  ulong key_block[16] = {0};      // Chave processada (128 bytes máximo)
-  ulong inner_data[16] = {0};     // ipad + mensagem
-  ulong outer_data[16] = {0};     // opad + hash interno
-  ulong inner_H[8] = {0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL, 0x3c6ef372fe94f82bULL,
-   0xa54ff53a5f1d36f1ULL, 0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL,
-   0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL};
+  ulong key_block[24] = {0};
+  ulong inner_data[32] = {0};
+  ulong outer_data[32] = {0};
+  ulong inner_H[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
 
-  // Ajustar a chave se for maior que 128 bytes
-  if (key_len > 128)
+  if (key_len > SHA512_BLOCK_SIZE)
   {
-    // sha512_hash_with_padding(key, key_len, key_block);
-    // key_len = 64; // SHA-512 reduz a chave para 64 bytes
-    printf("A chave passou de 128 caracteres e foi hashada.\n");
+    ulong reduced_key[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
+    sha512_hash_with_padding(key, key_len, reduced_key);
+    for (uint i = 0; i < 8; i++)
+    {
+      key_block[i] = reduced_key[i];
+    }
+    key_len = SHA512_HASH_SIZE;
   }
   else
   {
-    uint key_ulongs = (key_len + sizeof(ulong) - 1) / sizeof(ulong);
-    for (uint i = 0; i < key_ulongs; i++)
+    uint key_ulongs = (key_len + 7) / 8;
+    for (uint i = 0; i <= key_ulongs; i++)
     {
       key_block[i] = key[i];
     }
   }
 
-  // Criar ipad e opad corretamente
-  for (uint i = 0; i < 16; i++)
+  for (uint i = 0; i < 24; i++)
   {
-    if (i < (key_len + sizeof(ulong) - 1) / sizeof(ulong))
-    {
-      inner_data[i] = key_block[i] ^ 0x3636363636363636ULL;
-      outer_data[i] = key_block[i] ^ 0x5C5C5C5C5C5C5C5CULL;
-    }
-    else
-    {
-      inner_data[i] = 0x3636363636363636ULL;
-      outer_data[i] = 0x5C5C5C5C5C5C5C5CULL;
-    }
+    inner_data[i] = key_block[i] ^ 0x3636363636363636ULL;
+    outer_data[i] = key_block[i] ^ 0x5C5C5C5C5C5C5C5CULL;
   }
 
-  // Preencher mensagem interna (ipad + mensagem)
-  uint message_ulongs = (message_len + sizeof(ulong) - 1) / sizeof(ulong);
-  if (16 + message_ulongs > 64)
-  {
-    printf("Erro: mensagem muito longa para o buffer interno.\n");
-    return;
-  }
+  uint message_ulongs = (message_len + 7) / 8;
   for (uint i = 0; i < message_ulongs; i++)
   {
     inner_data[16 + i] = message[i];
   }
 
   uint inner_message_len_bytes = 128 + message_len;
-  sha512_hash_with_padding(inner_data, 192, inner_H);
+  sha512_hash_with_padding(inner_data, inner_message_len_bytes, inner_H);
 
   for (uint i = 0; i < 8; i++)
   {
     outer_data[16 + i] = inner_H[i];
   }
 
-  uint outer_message_len_bytes = 128 + 64;
-  sha512_hash_with_padding(outer_data, outer_message_len_bytes, J);
+  sha512_hash_with_padding(outer_data, 192, J);
 }
 
-void test_pbkdf()
+void pbkdf2_hmac_sha512_long(
+    ulong *password, uint password_len,
+    ulong *output)
 {
-  uint ranges[2][2] = {{115, 135}, {245, 256}};
-  for (uint range_idx = 0; range_idx < 2; range_idx++)
-  {
-    uint start = ranges[range_idx][0];
-    uint end = ranges[range_idx][1];
+  const ulong mnemonic_salt[] = {
+      0x6d6e656d6f6e6963ULL, 
+      0x0000000100000000ULL 
+  };
+  const uint salt_len = 2;
+  const uint iterations = 2048;
 
-    for (uint len = start; len <= end; len++)
+  ulong U[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
+  ulong T[8];
+  hmac_sha512_long(password, password_len, mnemonic_salt, 12, U);
+
+  for (uint i = 0; i < 8; i++) {
+    T[i] = U[i];
+  }
+  for (uint iteration = 1; iteration < iterations; iteration++)  {
+    ulong UX[8] = {H0_SHA512, H1_SHA512, H2_SHA512, H3_SHA512, H4_SHA512, H5_SHA512, H6_SHA512, H7_SHA512};
+    hmac_sha512_long(password, password_len, U, SHA512_HASH_SIZE, UX);
+    for (uint i = 0; i < 8; i++)
     {
-      uchar message[256] = {0};
-      for (uint i = 0; i < len; i++)
-      {
-        message[i] = 'a';
-      }
-      ulong H[8];
-      for (int i = 0; i < 8; i++)
-      {
-        //H[i] = SHA512_INIT[i];
-      }
-
-      // Compute the SHA-512 hash
-      sha512_hash_with_padding((ulong *)message, len, H);
-
-      // Print the hash directly
-      printf("Length %u: ", len);
-      for (int i = 0; i < 8; i++)
-      {
-        printf("%016lx", H[i]);
-      }
-      printf("\n");
+      T[i] ^= UX[i];
+      U[i] = UX[i];
     }
+  }
+  for (uint i = 0; i < 8; i++)
+  {
+    output[i] = T[i];
   }
 }
