@@ -11,11 +11,7 @@ mnemo = Mnemonic("english")
 platforms = cl.get_platforms()
 devices = platforms[0].get_devices()
 
-<<<<<<< HEAD
 device = devices[0]
-=======
-device = devices[1]
->>>>>>> e14ba28adc7e8f5a476c55638c0ba12c99951532
 
 max_work_item_sizes = device.max_work_item_sizes 
 max_work_group_size = device.max_work_group_size
@@ -25,22 +21,13 @@ print(f"Max Work Item Sizes: {max_work_item_sizes}")
 print(f"Max Work Group Size: {max_work_group_size}")
 
 
-<<<<<<< HEAD
 FIXED_WORDS = "actual action amused black abandon adjust winter abandon abandon abandon abandon abandon".split()
 DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
 FIXED_SEED = "actual action amused black abandon adjust winter "
 
 BATCH_SIZE = 1
 LOCAL_WORKERS = None
-=======
-FIXED_WORDS = "actual action amused black abandon adjust wink abandon abandon abandon abandon abandon".split()
-DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
-FIXED_SEED = "actual action amused black abandon adjust winter "
-
-BATCH_SIZE = 100
-LOCAL_WORKERS = (64,)
->>>>>>> e14ba28adc7e8f5a476c55638c0ba12c99951532
-WORKERS = (100_000_000, )
+WORKERS = (1000000, )
 
 
 
@@ -52,15 +39,9 @@ def main():
     print("OpenCL inicializado com sucesso.")
     try:
         program = build_program(context, "./kernel/common.cl",  "./kernel/sha512_hmac.cl", "./kernel/sha256.cl", "./kernel/main.cl")
-<<<<<<< HEAD
    
         for OFFSET in range(100):            
             run_kernel(program, queue, BATCH_SIZE, OFFSET * (WORKERS[0]*BATCH_SIZE))
-=======
-        indicesLong = string_to_long_array(FIXED_SEED)
-
-        run_kernel(program, queue, indicesLong, len(FIXED_SEED))
->>>>>>> e14ba28adc7e8f5a476c55638c0ba12c99951532
         print("Kernel executado com sucesso.")
     except Exception as e:
         print(f"Erro ao compilar o programa OpenCL: {e}")
@@ -71,15 +52,11 @@ def main():
 def load_program_source(filename):
     with open(filename, 'r') as f:
         content = f.read()
-<<<<<<< HEAD
     HIGH, LOW = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
     content = content.replace("TEMPLATE:PARTIAL_SEED", FIXED_SEED)
     content = content.replace("\"TEMPLATE:SEED_MAX\"", str(HIGH))
     content = content.replace("\"TEMPLATE:SEED_LOW\"", str(LOW))
     content = content.replace("\"TEMPLATE:OFFSET_LEN\"", str(len(FIXED_SEED)))
-=======
-    content = content.replace("<TEMPLATE:PARTIAL_SEED>", FIXED_SEED)
->>>>>>> e14ba28adc7e8f5a476c55638c0ba12c99951532
     return content
 
 
@@ -136,39 +113,16 @@ def mnemonic_to_uint64_pair(indices):
 
 
 
-<<<<<<< HEAD
 def run_kernel(program, queue, BATCH_SIZE, OFFSET):
     context = program.context
     kernel = program.generate_combinations
     kernel.set_args(np.uint64(OFFSET), np.uint64(BATCH_SIZE))
-    time.sleep(1)
     start_time = time.time()   
     cl.enqueue_nd_range_kernel(queue, kernel, WORKERS, LOCAL_WORKERS).wait()
     end_time = time.time()
     elapsed_time = end_time - start_time
     seeds = WORKERS[0] * BATCH_SIZE
     media = seeds / elapsed_time    
-=======
-def run_kernel(program, queue, indices, len):
-    context = program.context
-    high, low = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
-
-    indices_buffer = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(indices, dtype=np.uint64))
-    seed = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([high, low], dtype=np.uint64))
-
-
-    kernel = program.generate_combinations
-    kernel.set_args(seed, np.uint64(BATCH_SIZE), indices_buffer, np.uint64(len))
-    start_time = time.time()
-    time.sleep(1)
-    cl.enqueue_nd_range_kernel(queue, kernel, WORKERS, LOCAL_WORKERS).wait()
-    
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    seeds = WORKERS[0] * BATCH_SIZE
-    media = seeds / elapsed_time
-    
->>>>>>> e14ba28adc7e8f5a476c55638c0ba12c99951532
     print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:.6f} por seg")
     return True
 

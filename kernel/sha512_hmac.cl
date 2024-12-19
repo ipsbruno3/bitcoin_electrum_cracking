@@ -1,11 +1,48 @@
 #define ROTATE_RIGHT(x, n) ((x >> n) | (x << (64UL - n)))
+#define ROTATE(x, y) (((x) >> (y)) | ((x) << (64 - (y))))
 
-#define FUNCAO(i)                                                              \
-  W_15 = W[i - 15], W_2 = W[i - 2],                                            \
-  W[i] = W[i - 16] +                                                           \
-         (ROTATE_RIGHT(W_15, 1UL) ^ ROTATE_RIGHT(W_15, 8UL) ^ (W_15 >> 7UL)) + \
-         W[i - 7] +                                                            \
-         (ROTATE_RIGHT(W_2, 19UL) ^ ROTATE_RIGHT(W_2, 61UL) ^ (W_2 >> 6UL))
+#define F1(x, y, z) (bitselect(z, y, x))
+#define F0(x, y, z) (bitselect(x, y, ((x) ^ (z))))
+
+#define rotl64(a, n) (rotate((a), (n)))
+#define rotr64(a, n) (rotate((a), (64ul - n)))
+
+#define SHA512_S0(x) (rotr64(x, 28ul) ^ rotr64(x, 34ul) ^ rotr64(x, 39ul))
+#define SHA512_S1(x) (rotr64(x, 14ul) ^ rotr64(x, 18ul) ^ rotr64(x, 41ul))
+
+inline ulong little_s0(ulong x) {
+  return rotr64(x, 1ul) ^ rotr64(x, 8ul) ^ (x >> 7ul);
+}
+
+inline ulong little_s1(ulong x) {
+  return rotr64(x, 19ul) ^ rotr64(x, 61ul) ^ (x >> 6ul);
+}
+
+#define SHA512_STEP(a, b, c, d, e, f, g, h, x, K)                              \
+  {                                                                            \
+    h += K + SHA512_S1(e) + F1(e, f, g) + x;                                   \
+    d += h;                                                                    \
+    h += SHA512_S0(a) + F0(a, b, c);                                           \
+  }
+#define ROUND_STEP_SHA512(i)                                                   \
+  {                                                                            \
+    SHA512_STEP(a, b, c, d, e, f, g, h, W[i + 0], K512[i + 0]);                \
+    SHA512_STEP(h, a, b, c, d, e, f, g, W[i + 1], K512[i + 1]);                \
+    SHA512_STEP(g, h, a, b, c, d, e, f, W[i + 2], K512[i + 2]);                \
+    SHA512_STEP(f, g, h, a, b, c, d, e, W[i + 3], K512[i + 3]);                \
+    SHA512_STEP(e, f, g, h, a, b, c, d, W[i + 4], K512[i + 4]);                \
+    SHA512_STEP(d, e, f, g, h, a, b, c, W[i + 5], K512[i + 5]);                \
+    SHA512_STEP(c, d, e, f, g, h, a, b, W[i + 6], K512[i + 6]);                \
+    SHA512_STEP(b, c, d, e, f, g, h, a, W[i + 7], K512[i + 7]);                \
+    SHA512_STEP(a, b, c, d, e, f, g, h, W[i + 8], K512[i + 8]);                \
+    SHA512_STEP(h, a, b, c, d, e, f, g, W[i + 9], K512[i + 9]);                \
+    SHA512_STEP(g, h, a, b, c, d, e, f, W[i + 10], K512[i + 10]);              \
+    SHA512_STEP(f, g, h, a, b, c, d, e, W[i + 11], K512[i + 11]);              \
+    SHA512_STEP(e, f, g, h, a, b, c, d, W[i + 12], K512[i + 12]);              \
+    SHA512_STEP(d, e, f, g, h, a, b, c, W[i + 13], K512[i + 13]);              \
+    SHA512_STEP(c, d, e, f, g, h, a, b, W[i + 14], K512[i + 14]);              \
+    SHA512_STEP(b, c, d, e, f, g, h, a, W[i + 15], K512[i + 15]);              \
+  }
 
 #define INIT_SHA512(a)                                                         \
   (a)[0] = 0x6a09e667f3bcc908UL;                                               \
@@ -27,14 +64,6 @@
   (dst)[6] = (src)[6];                                                         \
   (dst)[7] = (src)[7];
 
-#define FUNCAO_SHA(i)                                                          \
-  temp1 = h +                                                                  \
-          (ROTATE_RIGHT(e, 14) ^ ROTATE_RIGHT(e, 18) ^ ROTATE_RIGHT(e, 41)) +  \
-          ((e & f) ^ (~e & g)) + K512[i] + W[i];                               \
-  temp2 = (ROTATE_RIGHT(a, 28) ^ ROTATE_RIGHT(a, 34) ^ ROTATE_RIGHT(a, 39)) +  \
-          ((a & b) ^ (a & c) ^ (b & c)),                                       \
-  h = g, g = f, f = e, e = d + temp1, d = c, c = b, b = a, a = temp1 + temp2
-
 #define FUNCAO_W1(i) W[i] = message[i]
 #define FUNCAO_W2(i) W[i] = message[16 + i]
 #define FUNCAO_W3(i) W[i] = message[block_idx * 16 + i]
@@ -54,96 +83,64 @@
 static inline void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
 
   ulong W[80];
-  ulong a, b, c, d, e, f, g, h;
+  ulong a, b, c, d, e, f, g, h, i;
   ulong S0, S1, ch, maj, temp1, temp2, W_15, W_2;
 
-  FUNCAO_W1(0), FUNCAO_W1(1), FUNCAO_W1(2), FUNCAO_W1(3), FUNCAO_W1(4),
-      FUNCAO_W1(5), FUNCAO_W1(6), FUNCAO_W1(7), FUNCAO_W1(8), FUNCAO_W1(9),
-      FUNCAO_W1(10), FUNCAO_W1(11), FUNCAO_W1(12), FUNCAO_W1(13), FUNCAO_W1(14),
-      FUNCAO_W1(15);
+  for (i = 0; i < 16; i++)
+    FUNCAO_W1(i);
 
-  FUNCAO(16), FUNCAO(17), FUNCAO(18), FUNCAO(19), FUNCAO(20), FUNCAO(21),
-      FUNCAO(22), FUNCAO(23), FUNCAO(24), FUNCAO(25), FUNCAO(26), FUNCAO(27),
-      FUNCAO(28), FUNCAO(29), FUNCAO(30), FUNCAO(31), FUNCAO(32), FUNCAO(33),
-      FUNCAO(34), FUNCAO(35), FUNCAO(36), FUNCAO(37), FUNCAO(38), FUNCAO(39),
-      FUNCAO(40), FUNCAO(41), FUNCAO(42), FUNCAO(43), FUNCAO(44), FUNCAO(45),
-      FUNCAO(46), FUNCAO(47), FUNCAO(48), FUNCAO(49), FUNCAO(50), FUNCAO(51),
-      FUNCAO(52), FUNCAO(53), FUNCAO(54), FUNCAO(55), FUNCAO(56), FUNCAO(57),
-      FUNCAO(58), FUNCAO(59), FUNCAO(60), FUNCAO(61), FUNCAO(62), FUNCAO(63),
-      FUNCAO(64), FUNCAO(65), FUNCAO(66), FUNCAO(67), FUNCAO(68), FUNCAO(69),
-      FUNCAO(70), FUNCAO(71), FUNCAO(72), FUNCAO(73), FUNCAO(74), FUNCAO(75),
-      FUNCAO(76), FUNCAO(77), FUNCAO(78), FUNCAO(79);
+  for (int i = 16; i < 80; i++) {
+    W[i] = W[i - 16] + little_s0(W[i - 15]) + W[i - 7] + little_s1(W[i - 2]);
+  }
 
-  a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6],
+  a = H[0];
+  b = H[1];
+  c = H[2];
+  d = H[3];
+  e = H[4];
+  f = H[5];
+  g = H[6];
   h = H[7];
 
-  FUNCAO_SHA(0), FUNCAO_SHA(1), FUNCAO_SHA(2), FUNCAO_SHA(3), FUNCAO_SHA(4),
-      FUNCAO_SHA(5), FUNCAO_SHA(6), FUNCAO_SHA(7), FUNCAO_SHA(8), FUNCAO_SHA(9),
-      FUNCAO_SHA(10), FUNCAO_SHA(11), FUNCAO_SHA(12), FUNCAO_SHA(13),
-      FUNCAO_SHA(14), FUNCAO_SHA(15), FUNCAO_SHA(16), FUNCAO_SHA(17),
-      FUNCAO_SHA(18), FUNCAO_SHA(19), FUNCAO_SHA(20), FUNCAO_SHA(21),
-      FUNCAO_SHA(22), FUNCAO_SHA(23), FUNCAO_SHA(24), FUNCAO_SHA(25),
-      FUNCAO_SHA(26), FUNCAO_SHA(27), FUNCAO_SHA(28), FUNCAO_SHA(29),
-      FUNCAO_SHA(30), FUNCAO_SHA(31), FUNCAO_SHA(32), FUNCAO_SHA(33),
-      FUNCAO_SHA(34), FUNCAO_SHA(35), FUNCAO_SHA(36), FUNCAO_SHA(37),
-      FUNCAO_SHA(38), FUNCAO_SHA(39), FUNCAO_SHA(40), FUNCAO_SHA(41),
-      FUNCAO_SHA(42), FUNCAO_SHA(43), FUNCAO_SHA(44), FUNCAO_SHA(45),
-      FUNCAO_SHA(46), FUNCAO_SHA(47), FUNCAO_SHA(48), FUNCAO_SHA(49),
-      FUNCAO_SHA(50), FUNCAO_SHA(51), FUNCAO_SHA(52), FUNCAO_SHA(53),
-      FUNCAO_SHA(54), FUNCAO_SHA(55), FUNCAO_SHA(56), FUNCAO_SHA(57),
-      FUNCAO_SHA(58), FUNCAO_SHA(59), FUNCAO_SHA(60), FUNCAO_SHA(61),
-      FUNCAO_SHA(62), FUNCAO_SHA(63), FUNCAO_SHA(64), FUNCAO_SHA(65),
-      FUNCAO_SHA(66), FUNCAO_SHA(67), FUNCAO_SHA(68), FUNCAO_SHA(69),
-      FUNCAO_SHA(70), FUNCAO_SHA(71), FUNCAO_SHA(72), FUNCAO_SHA(73),
-      FUNCAO_SHA(74), FUNCAO_SHA(75), FUNCAO_SHA(76), FUNCAO_SHA(77),
-      FUNCAO_SHA(78), FUNCAO_SHA(79);
+  ROUND_STEP_SHA512(0);
+  ROUND_STEP_SHA512(16);
+  ROUND_STEP_SHA512(32);
+  ROUND_STEP_SHA512(48);
+  ROUND_STEP_SHA512(64);
 
   H[0] += a, H[1] += b, H[2] += c, H[3] += d, H[4] += e, H[5] += f, H[6] += g,
       H[7] += h;
 
-  FUNCAO_W2(0), FUNCAO_W2(1), FUNCAO_W2(2), FUNCAO_W2(3), FUNCAO_W2(4),
-      FUNCAO_W2(5), FUNCAO_W2(6), FUNCAO_W2(7), FUNCAO_W2(8), FUNCAO_W2(9),
-      FUNCAO_W2(10), FUNCAO_W2(11), FUNCAO_W2(12), FUNCAO_W2(13), FUNCAO_W2(14),
-      FUNCAO_W2(15);
+  for (i = 0; i < 16; i++)
+    FUNCAO_W2(i);
 
-  FUNCAO(16), FUNCAO(17), FUNCAO(18), FUNCAO(19), FUNCAO(20), FUNCAO(21),
-      FUNCAO(22), FUNCAO(23), FUNCAO(24), FUNCAO(25), FUNCAO(26), FUNCAO(27),
-      FUNCAO(28), FUNCAO(29), FUNCAO(30), FUNCAO(31), FUNCAO(32), FUNCAO(33),
-      FUNCAO(34), FUNCAO(35), FUNCAO(36), FUNCAO(37), FUNCAO(38), FUNCAO(39),
-      FUNCAO(40), FUNCAO(41), FUNCAO(42), FUNCAO(43), FUNCAO(44), FUNCAO(45),
-      FUNCAO(46), FUNCAO(47), FUNCAO(48), FUNCAO(49), FUNCAO(50), FUNCAO(51),
-      FUNCAO(52), FUNCAO(53), FUNCAO(54), FUNCAO(55), FUNCAO(56), FUNCAO(57),
-      FUNCAO(58), FUNCAO(59), FUNCAO(60), FUNCAO(61), FUNCAO(62), FUNCAO(63),
-      FUNCAO(64), FUNCAO(65), FUNCAO(66), FUNCAO(67), FUNCAO(68), FUNCAO(69),
-      FUNCAO(70), FUNCAO(71), FUNCAO(72), FUNCAO(73), FUNCAO(74), FUNCAO(75),
-      FUNCAO(76), FUNCAO(77), FUNCAO(78), FUNCAO(79);
+  for (i = 16; i < 80; i++) {
+    W[i] = W[i - 16] + little_s0(W[i - 15]) + W[i - 7] + little_s1(W[i - 2]);
+  }
 
-  a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6],
+  a = H[0];
+  b = H[1];
+  c = H[2];
+  d = H[3];
+  e = H[4];
+  f = H[5];
+  g = H[6];
   h = H[7];
 
-  FUNCAO_SHA(0), FUNCAO_SHA(1), FUNCAO_SHA(2), FUNCAO_SHA(3), FUNCAO_SHA(4),
-      FUNCAO_SHA(5), FUNCAO_SHA(6), FUNCAO_SHA(7), FUNCAO_SHA(8), FUNCAO_SHA(9),
-      FUNCAO_SHA(10), FUNCAO_SHA(11), FUNCAO_SHA(12), FUNCAO_SHA(13),
-      FUNCAO_SHA(14), FUNCAO_SHA(15), FUNCAO_SHA(16), FUNCAO_SHA(17),
-      FUNCAO_SHA(18), FUNCAO_SHA(19), FUNCAO_SHA(20), FUNCAO_SHA(21),
-      FUNCAO_SHA(22), FUNCAO_SHA(23), FUNCAO_SHA(24), FUNCAO_SHA(25),
-      FUNCAO_SHA(26), FUNCAO_SHA(27), FUNCAO_SHA(28), FUNCAO_SHA(29),
-      FUNCAO_SHA(30), FUNCAO_SHA(31), FUNCAO_SHA(32), FUNCAO_SHA(33),
-      FUNCAO_SHA(34), FUNCAO_SHA(35), FUNCAO_SHA(36), FUNCAO_SHA(37),
-      FUNCAO_SHA(38), FUNCAO_SHA(39), FUNCAO_SHA(40), FUNCAO_SHA(41),
-      FUNCAO_SHA(42), FUNCAO_SHA(43), FUNCAO_SHA(44), FUNCAO_SHA(45),
-      FUNCAO_SHA(46), FUNCAO_SHA(47), FUNCAO_SHA(48), FUNCAO_SHA(49),
-      FUNCAO_SHA(50), FUNCAO_SHA(51), FUNCAO_SHA(52), FUNCAO_SHA(53),
-      FUNCAO_SHA(54), FUNCAO_SHA(55), FUNCAO_SHA(56), FUNCAO_SHA(57),
-      FUNCAO_SHA(58), FUNCAO_SHA(59), FUNCAO_SHA(60), FUNCAO_SHA(61),
-      FUNCAO_SHA(62), FUNCAO_SHA(63), FUNCAO_SHA(64), FUNCAO_SHA(65),
-      FUNCAO_SHA(66), FUNCAO_SHA(67), FUNCAO_SHA(68), FUNCAO_SHA(69),
-      FUNCAO_SHA(70), FUNCAO_SHA(71), FUNCAO_SHA(72), FUNCAO_SHA(73),
-      FUNCAO_SHA(74), FUNCAO_SHA(75), FUNCAO_SHA(76), FUNCAO_SHA(77),
-      FUNCAO_SHA(78), FUNCAO_SHA(79);
+  ROUND_STEP_SHA512(0);
+  ROUND_STEP_SHA512(16);
+  ROUND_STEP_SHA512(32);
+  ROUND_STEP_SHA512(48);
+  ROUND_STEP_SHA512(64);
 
-  H[0] += a, H[1] += b, H[2] += c, H[3] += d, H[4] += e, H[5] += f, H[6] += g,
-      H[7] += h;
+  H[0] += a;
+  H[1] += b;
+  H[2] += c;
+  H[3] += d;
+  H[4] += e;
+  H[5] += f;
+  H[6] += g;
+  H[7] += h;
 }
 
 static inline void PBKDF2_ROUND(ulong *UX, ulong *inner_H, ulong *U,
@@ -166,73 +163,6 @@ static inline void PBKDF2_ROUND(ulong *UX, ulong *inner_H, ulong *U,
   COPY_EIGHT(U, UX);
 }
 
-static inline void sha512_hash_large_message(ulong *message, uchar total_blocks,
-                                             ulong *H) {
-
-  ulong W[80];
-  ulong a, b, c, d, e, f, g, h;
-  ulong S0, S1, ch, maj, temp1, temp2, W_15, W_2;
-
-  for (uchar block_idx = 0; block_idx < total_blocks; block_idx++) {
-
-    FUNCAO_W3(0), FUNCAO_W3(1), FUNCAO_W3(2), FUNCAO_W3(3), FUNCAO_W3(4),
-        FUNCAO_W3(5), FUNCAO_W3(6), FUNCAO_W3(7), FUNCAO_W3(8), FUNCAO_W3(9),
-        FUNCAO_W3(10), FUNCAO_W3(11), FUNCAO_W3(12), FUNCAO_W3(13),
-        FUNCAO_W3(14), FUNCAO_W3(15);
-
-    FUNCAO(16), FUNCAO(17), FUNCAO(18), FUNCAO(19), FUNCAO(20), FUNCAO(21),
-        FUNCAO(22), FUNCAO(23), FUNCAO(24), FUNCAO(25), FUNCAO(26), FUNCAO(27),
-        FUNCAO(28), FUNCAO(29), FUNCAO(30), FUNCAO(31), FUNCAO(32), FUNCAO(33),
-        FUNCAO(34), FUNCAO(35), FUNCAO(36), FUNCAO(37), FUNCAO(38), FUNCAO(39),
-        FUNCAO(40), FUNCAO(41), FUNCAO(42), FUNCAO(43), FUNCAO(44), FUNCAO(45),
-        FUNCAO(46), FUNCAO(47), FUNCAO(48), FUNCAO(49), FUNCAO(50), FUNCAO(51),
-        FUNCAO(52), FUNCAO(53), FUNCAO(54), FUNCAO(55), FUNCAO(56), FUNCAO(57),
-        FUNCAO(58), FUNCAO(59), FUNCAO(60), FUNCAO(61), FUNCAO(62), FUNCAO(63),
-        FUNCAO(64), FUNCAO(65), FUNCAO(66), FUNCAO(67), FUNCAO(68), FUNCAO(69),
-        FUNCAO(70), FUNCAO(71), FUNCAO(72), FUNCAO(73), FUNCAO(74), FUNCAO(75),
-        FUNCAO(76), FUNCAO(77), FUNCAO(78), FUNCAO(79);
-
-    a = H[0];
-    b = H[1];
-    c = H[2];
-    d = H[3];
-    e = H[4];
-    f = H[5];
-    g = H[6];
-    h = H[7];
-
-    FUNCAO_SHA(0), FUNCAO_SHA(1), FUNCAO_SHA(2), FUNCAO_SHA(3), FUNCAO_SHA(4),
-        FUNCAO_SHA(5), FUNCAO_SHA(6), FUNCAO_SHA(7), FUNCAO_SHA(8),
-        FUNCAO_SHA(9), FUNCAO_SHA(10), FUNCAO_SHA(11), FUNCAO_SHA(12),
-        FUNCAO_SHA(13), FUNCAO_SHA(14), FUNCAO_SHA(15), FUNCAO_SHA(16),
-        FUNCAO_SHA(17), FUNCAO_SHA(18), FUNCAO_SHA(19), FUNCAO_SHA(20),
-        FUNCAO_SHA(21), FUNCAO_SHA(22), FUNCAO_SHA(23), FUNCAO_SHA(24),
-        FUNCAO_SHA(25), FUNCAO_SHA(26), FUNCAO_SHA(27), FUNCAO_SHA(28),
-        FUNCAO_SHA(29), FUNCAO_SHA(30), FUNCAO_SHA(31), FUNCAO_SHA(32),
-        FUNCAO_SHA(33), FUNCAO_SHA(34), FUNCAO_SHA(35), FUNCAO_SHA(36),
-        FUNCAO_SHA(37), FUNCAO_SHA(38), FUNCAO_SHA(39), FUNCAO_SHA(40),
-        FUNCAO_SHA(41), FUNCAO_SHA(42), FUNCAO_SHA(43), FUNCAO_SHA(44),
-        FUNCAO_SHA(45), FUNCAO_SHA(46), FUNCAO_SHA(47), FUNCAO_SHA(48),
-        FUNCAO_SHA(49), FUNCAO_SHA(50), FUNCAO_SHA(51), FUNCAO_SHA(52),
-        FUNCAO_SHA(53), FUNCAO_SHA(54), FUNCAO_SHA(55), FUNCAO_SHA(56),
-        FUNCAO_SHA(57), FUNCAO_SHA(58), FUNCAO_SHA(59), FUNCAO_SHA(60),
-        FUNCAO_SHA(61), FUNCAO_SHA(62), FUNCAO_SHA(63), FUNCAO_SHA(64),
-        FUNCAO_SHA(65), FUNCAO_SHA(66), FUNCAO_SHA(67), FUNCAO_SHA(68),
-        FUNCAO_SHA(69), FUNCAO_SHA(70), FUNCAO_SHA(71), FUNCAO_SHA(72),
-        FUNCAO_SHA(73), FUNCAO_SHA(74), FUNCAO_SHA(75), FUNCAO_SHA(76),
-        FUNCAO_SHA(77), FUNCAO_SHA(78), FUNCAO_SHA(79);
-
-    H[0] += a;
-    H[1] += b;
-    H[2] += c;
-    H[3] += d;
-    H[4] += e;
-    H[5] += f;
-    H[6] += g;
-    H[7] += h;
-  }
-}
-
 void hmac_sha512_long(ulong *inner_data, ulong *outer_data, ulong *J) {
   inner_data[16] = 7885351518267664739UL;
   inner_data[17] = 6442450944UL;
@@ -253,7 +183,10 @@ void hmac_prepare(ulong *key, uchar key_len, ulong *inner_data,
                   ulong *outer_data) {
 
   uchar key_ulongs = (key_len + 7) / 8;
-#pragma unroll
+#pragma loop pipeline(enable)
+#pragma cl_kernel_vectorize_enable
+#pragma INDEPENDENT
+#pragma OPENCL INDEPENDENT
   for (; key_ulongs > 0; --key_ulongs) {
     inner_data[key_ulongs - 1] = key[key_ulongs - 1] ^ 0x3636363636363636UL;
     outer_data[key_ulongs - 1] = key[key_ulongs - 1] ^ 0x5C5C5C5C5C5C5C5CUL;
@@ -288,7 +221,8 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
 
   COPY_EIGHT(U, T);
   ulong inner_H[8];
-
+#pragma nounroll
+#pragma loop dependence(enable)
   for (int i = 1; i < 2048; ++i) {
     PBKDF2_ROUND(UX, inner_H, U, inner_data, outer_data, T);
   }
