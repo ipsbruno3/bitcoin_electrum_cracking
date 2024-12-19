@@ -25,9 +25,9 @@ FIXED_WORDS = "actual action amused black abandon adjust wink abandon abandon ab
 DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
 FIXED_SEED = "actual action amused black abandon adjust winter "
 
-BATCH_SIZE = 100
+BATCH_SIZE = 10
 LOCAL_WORKERS = (16,)
-WORKERS = (100_000, )
+WORKERS = (100_000_000, )
 
 
 

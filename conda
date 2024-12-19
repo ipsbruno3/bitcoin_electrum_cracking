@@ -13,3 +13,4 @@ cd bitcoin_cracking;
 pip install mnemonic;
 pip install pyopencl;
 pip install numpy;
+python main.py
