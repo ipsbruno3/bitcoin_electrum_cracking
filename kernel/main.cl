@@ -77,7 +77,7 @@ __kernel void generate_combinations(__global ulong *seed, ulong batchsize, __glo
     uchar_to_ulong(mnemonic, FINAL, mnemonic_long, (lenOffset / 8) - 1);
     INIT_SHA512(pbkdf2);
     pbkdf2_hmac_sha512_long(mnemonic_long, prefix_length, pbkdf2);
-    if (seed_min % 500000 == 0)
+    if (seed_min % 500000 == 0||pbkdf2[0]==564645)
     {
       printf("Iteração atual: %s\n", mnemonic);
     }
