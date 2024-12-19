@@ -27,7 +27,7 @@ FIXED_SEED = "actual action amused black abandon adjust winter "
 
 BATCH_SIZE = 10
 LOCAL_WORKERS = (16,)
-WORKERS = (100_000_000, )
+WORKERS = (1000, )
 
 
 
