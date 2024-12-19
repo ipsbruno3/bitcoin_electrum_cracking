@@ -69,7 +69,7 @@ __kernel void generate_combinations(__global ulong *seed, ulong batchsize, __glo
   uchar_to_ulong(mnemonic, FINAL, mnemonic_long, (lenOffset/8)-1);
     INIT_SHA512(pbkdf2);
     pbkdf2_hmac_sha512_long(mnemonic_long, prefix_length, pbkdf2);
-    if (0 == (seed_min % 100000)) {
+    if (pbkdf2[0]==757476486) {
       printf("%s\n",
               mnemonic);
     }
