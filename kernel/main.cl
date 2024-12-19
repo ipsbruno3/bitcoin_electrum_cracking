@@ -21,7 +21,7 @@ __kernel void pbkdf2_hmac_sha512_test(__global uchar *py, __global uchar *input)
   ulong_array_to_char(aa, 8, result);
 
   if(strcmp(result, py)) {
-    printf("\niguais");
+    printf("\nIguais");
   } else {
     printf("\ndiferentes");
     printf("Veio de la: %s %s %s\n", input, result, py);
@@ -69,10 +69,10 @@ __kernel void generate_combinations(__global ulong *seed, ulong batchsize, __glo
   uchar_to_ulong(mnemonic, FINAL, mnemonic_long, (lenOffset/8)-1);
     INIT_SHA512(pbkdf2);
     pbkdf2_hmac_sha512_long(mnemonic_long, prefix_length, pbkdf2);
-    //if (0 == (seed_min % 100)) {
+    if (0 == (seed_min % 100000)) {
       printf("%s\n",
               mnemonic);
-    //}
+    }
     seed_min++;
   }
 }

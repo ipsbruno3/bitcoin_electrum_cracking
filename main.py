@@ -11,7 +11,7 @@ mnemo = Mnemonic("english")
 platforms = cl.get_platforms()
 devices = platforms[0].get_devices()
 
-device = devices[0]
+device = devices[1]
 
 max_work_item_sizes = device.max_work_item_sizes 
 max_work_group_size = device.max_work_group_size

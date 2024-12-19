@@ -9,3 +9,8 @@ conda install intel-compute-runtime;
 conda install beignet;
 conda install oclgrind;
 conda install ocl-icd-system;
+
+cd bitcoin_cracking;
+pip install mnemonic;
+pip install pyopencl;
+pip install numpy;
