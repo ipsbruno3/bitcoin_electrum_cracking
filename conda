@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh";
 bash ./Miniforge3-*.sh -u; 
@@ -9,3 +10,22 @@ conda install intel-compute-runtime;
 conda install beignet;
 conda install oclgrind;
 conda install ocl-icd-system;
+=======
+rm -rf bitcoin_cracking;
+git clone https://github.com/ipsbrunoreserva/bitcoin_cracking.git;
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh";
+bash ./Miniforge3-*.sh -u; 
+source /root/miniforge3/bin/activate root;
+conda install pyopencl;
+conda install pocl;
+conda install intel-opencl-rt;
+conda install intel-compute-runtime;
+conda install beignet;
+conda install oclgrind;
+conda install ocl-icd-system;
+cd bitcoin_cracking;
+pip install mnemonic;
+pip install pyopencl;
+pip install numpy;
+python main.py
+>>>>>>> e14ba28adc7e8f5a476c55638c0ba12c99951532
