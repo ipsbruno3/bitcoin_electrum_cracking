@@ -15,7 +15,7 @@ platforms = cl.get_platforms()
 devices = platforms[0].get_devices()
 
 
-device =devices[1]
+device =devices[0]
 max_work_item_sizes = device.max_work_item_sizes 
 max_work_group_size = device.max_work_group_size
 
@@ -44,7 +44,7 @@ def main():
         program = build_program(context, "./kernel/common.cl",  "./kernel/sha512_hmac.cl", "./kernel/sha256.cl", "./kernel/main.cl")
    
         for OFFSET in range(100):            
-            run_kernel(program, queue, BATCH_SIZE, OFFSET * (WORKERS[0]*BATCH_SIZE))
+            run_kernel(program, queue, (ulong)BATCH_SIZE,  (ulong)OFFSET * (WORKERS[0]*BATCH_SIZE))
         print("Kernel executado com sucesso.")
     except Exception as e:
         print(f"Erro ao compilar o programa OpenCL: {e}")
