@@ -28,9 +28,9 @@ FIXED_WORDS = "actual action amused black abandon adjust winter abandon abandon 
 DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
 FIXED_SEED = "actual action amused black abandon adjust winter "
 
-BATCH_SIZE = 1
+BATCH_SIZE = 10
 LOCAL_WORKERS = None
-WORKERS = (1000000, )
+WORKERS = (100000, )
 
 
 
@@ -43,8 +43,9 @@ def main():
     try:
         program = build_program(context, "./kernel/common.cl",  "./kernel/sha512_hmac.cl", "./kernel/sha256.cl", "./kernel/main.cl")
    
-        for OFFSET in range(100):            
-            run_kernel(program, queue, (ulong)BATCH_SIZE,  (ulong)OFFSET,  (WORKERS[0]*BATCH_SIZE))
+        for OFFSET in range(100):      
+
+            run_kernel(program, queue , ( (WORKERS[0]*BATCH_SIZE)), OFFSET)
         print("Kernel executado com sucesso.")
     except Exception as e:
         print(f"Erro ao compilar o programa OpenCL: {e}")
