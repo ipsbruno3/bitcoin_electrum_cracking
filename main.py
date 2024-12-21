@@ -44,7 +44,7 @@ def main():
         program = build_program(context, "./kernel/common.cl",  "./kernel/sha512_hmac.cl", "./kernel/sha256.cl", "./kernel/main.cl")
    
         for OFFSET in range(100):            
-            run_kernel(program, queue, (ulong)BATCH_SIZE,  (ulong)OFFSET * (WORKERS[0]*BATCH_SIZE))
+            run_kernel(program, queue, (ulong)BATCH_SIZE,  (ulong)OFFSET,  (WORKERS[0]*BATCH_SIZE))
         print("Kernel executado com sucesso.")
     except Exception as e:
         print(f"Erro ao compilar o programa OpenCL: {e}")
