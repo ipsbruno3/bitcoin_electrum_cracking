@@ -120,7 +120,7 @@ def mnemonic_to_uint64_pair(indices):
 
 contador  = 0
 def run_kernel(program, queue, BATCH_SIZE, OFFSET):
-    global contador;
+    global contador
     HIGH, LOW = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
     contador += 1
     kernel = program.generate_combinations

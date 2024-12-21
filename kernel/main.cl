@@ -14,13 +14,15 @@ kernel void generate_combinations(ulong OFFSET, ulong BATCH_SIZE) {
 
   int IDX = get_global_id(0);
   ulong seed_max = "TEMPLATE:SEED_MAX";
-  ulong seed_min = "TEMPLATE:SEED_MIN" + (IDX * BATCH_SIZE) + OFFSET;
+  ulong seed_min = "TEMPLATE:SEED_MIN";
   ulong final = BATCH_SIZE;
   ulong mnemonic_long[16];
   uchar mnemonic[128] = "TEMPLATE:PARTIAL_SEED";
   uint indices[12];
   ulong pbkdf2[8];
   const uint index = "TEMPLATE:OFFSET_LEN";
+
+  seed_min += +(IDX * BATCH_SIZE) + OFFSET;
 
   for (ulong iterator = 0; iterator < final; iterator++) {
     uchar prefix_length = index;
