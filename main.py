@@ -1,3 +1,8 @@
+#include "/kernel/sha256.cl"
+#include "/kernel/common.cl"
+#include "/kernel/sha512_hmac.cl"
+
+
 import numpy as np
 import pyopencl as cl
 from mnemonic import Mnemonic
@@ -5,8 +10,6 @@ import time
 import struct
 
 mnemo = Mnemonic("english")
-
-
 
 platforms = cl.get_platforms()
 devices = platforms[0].get_devices()
