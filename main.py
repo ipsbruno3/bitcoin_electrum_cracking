@@ -11,7 +11,8 @@ mnemo = Mnemonic("english")
 platforms = cl.get_platforms()
 devices = platforms[0].get_devices()
 
-device = devices[0]
+
+device = if devices[1]  :  devices[1] else  devices[0]
 
 max_work_item_sizes = device.max_work_item_sizes 
 max_work_group_size = device.max_work_group_size
@@ -54,8 +55,10 @@ def load_program_source(filename):
         content = f.read()
     HIGH, LOW = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
     content = content.replace("TEMPLATE:PARTIAL_SEED", FIXED_SEED)
+    content = content.replace("\"TEMPLATE:PRINT_DEBUG\"", str(1000000)) # Imprimir a cada 1 milhão de resultados
     content = content.replace("\"TEMPLATE:SEED_MAX\"", str(HIGH))
     content = content.replace("\"TEMPLATE:SEED_LOW\"", str(LOW))
+    
     content = content.replace("\"TEMPLATE:OFFSET_LEN\"", str(len(FIXED_SEED)))
     return content
 
@@ -112,18 +115,24 @@ def mnemonic_to_uint64_pair(indices):
     return high, low
 
 
-
+contador  = 0
 def run_kernel(program, queue, BATCH_SIZE, OFFSET):
-    context = program.context
+    global contador;
+    HIGH, LOW = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
+    contador += 1
     kernel = program.generate_combinations
     kernel.set_args(np.uint64(OFFSET), np.uint64(BATCH_SIZE))
     start_time = time.time()   
     cl.enqueue_nd_range_kernel(queue, kernel, WORKERS, LOCAL_WORKERS).wait()
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    seeds = WORKERS[0] * BATCH_SIZE
-    media = seeds / elapsed_time    
-    print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:.6f} por seg")
+    
+    if( "TEMPLATE:PRINT_DEBUG" % contador == 0) :
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        seeds = WORKERS[0] * BATCH_SIZE
+        media = seeds / elapsed_time    
+
+        print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:.6f} por seg")
+    
     return True
 
 

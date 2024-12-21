@@ -28,21 +28,18 @@ kernel void pbkdf2_hmac_sha512_test(__global uchar *py, __global uchar *input) {
 
 kernel void generate_combinations(ulong OFFSET, ulong BATCH_SIZE) {
 
-  __private int IDX = get_global_id(0);
-  __private ulong seed_max = "TEMPLATE:SEED_MAX";
-  __private ulong seed_min = "TEMPLATE:SEED_MIN" + (IDX * BATCH_SIZE) + OFFSET;
-  __private ulong final = BATCH_SIZE;
-  __private ulong mnemonic_long[16];
-  __private uchar mnemonic[128] = "TEMPLATE:PARTIAL_SEED";
-
-  __private uint indices[12];
-  __private ulong pbkdf2[8];
-
-  __private const uint index = "TEMPLATE:OFFSET_LEN";
+  int IDX = get_global_id(0);
+  ulong seed_max = "TEMPLATE:SEED_MAX";
+  ulong seed_min = "TEMPLATE:SEED_MIN" + (IDX * BATCH_SIZE) + OFFSET;
+  ulong final = BATCH_SIZE;
+  ulong mnemonic_long[16];
+  uchar mnemonic[128] = "TEMPLATE:PARTIAL_SEED";
+  uint indices[12];
+  ulong pbkdf2[8];
+  const uint index = "TEMPLATE:OFFSET_LEN";
 
   for (ulong iterator = 0; iterator < final; iterator++) {
-    __private uchar prefix_length = index;
-
+    uchar prefix_length = index;
     indices[7] = (seed_min & (2047UL << 40UL)) >> 40UL;
     indices[8] = (seed_min & (2047UL << 29UL)) >> 29UL;
     indices[9] = (seed_min & (2047UL << 18UL)) >> 18UL;
