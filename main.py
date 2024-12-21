@@ -41,7 +41,7 @@ def main():
         return
     print("OpenCL inicializado com sucesso.")
     try:
-        program = build_program(context, "./kernel/common.cl",  "./kernel/sha512_hmac.cl", "./kernel/sha256.cl", "./kernel/main.cl")
+        program = build_program(context, "./kernel/main.cl")
    
         for OFFSET in range(100):      
 
