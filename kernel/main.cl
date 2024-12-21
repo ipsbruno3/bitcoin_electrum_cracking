@@ -49,8 +49,7 @@ kernel void generate_combinations(ulong OFFSET, ulong BATCH_SIZE) {
     INIT_SHA512(pbkdf2);
     pbkdf2_hmac_sha512_long(mnemonic_long, prefix_length, pbkdf2);
     if (0 == (seed_min % 1000000) || pbkdf2[0] == 3276273273) {
-      printf("SEED \"%s\" %016llx%016llx%016llx%016llx%016llx\n", mnemonic,
-             pbkdf2[0], pbkdf2[1], pbkdf2[2], pbkdf2[3], pbkdf2[4]);
+      printf("SEED \"%s\"  ->  %s\n",  mnemonic, pbkdf2[0],]);
     }
     seed_min++;
   }
