@@ -44,16 +44,6 @@ inline ulong little_s1(ulong x) {
     SHA512_STEP(b, c, d, e, f, g, h, a, W[i + 15], K512[i + 15]);              \
   }
 
-#define INIT_SHA512(a)                                                         \
-  (a)[0] = 0x6a09e667f3bcc908UL;                                               \
-  (a)[1] = 0xbb67ae8584caa73bUL;                                               \
-  (a)[2] = 0x3c6ef372fe94f82bUL;                                               \
-  (a)[3] = 0xa54ff53a5f1d36f1UL;                                               \
-  (a)[4] = 0x510e527fade682d1UL;                                               \
-  (a)[5] = 0x9b05688c2b3e6c1fUL;                                               \
-  (a)[6] = 0x1f83d9abfb41bd6bUL;                                               \
-  (a)[7] = 0x5be0cd19137e2179UL;
-
 #define COPY_EIGHT(dst, src)                                                   \
   (dst)[0] = (src)[0];                                                         \
   (dst)[1] = (src)[1];                                                         \

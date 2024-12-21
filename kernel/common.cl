@@ -1,6 +1,12 @@
-#define MAX_WORD_LENGTH 8
-#define NUM_WORDS 2048
-#define TOTAL_CHECKSUM_MATCHES 128
+#define INIT_SHA512(a)                                                         \
+  (a)[0] = 0x6a09e667f3bcc908UL;                                               \
+  (a)[1] = 0xbb67ae8584caa73bUL;                                               \
+  (a)[2] = 0x3c6ef372fe94f82bUL;                                               \
+  (a)[3] = 0xa54ff53a5f1d36f1UL;                                               \
+  (a)[4] = 0x510e527fade682d1UL;                                               \
+  (a)[5] = 0x9b05688c2b3e6c1fUL;                                               \
+  (a)[6] = 0x1f83d9abfb41bd6bUL;                                               \
+  (a)[7] = 0x5be0cd19137e2179UL;
 
 uint strlen(uchar *s) {
   uint l;

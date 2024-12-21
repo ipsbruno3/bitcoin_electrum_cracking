@@ -10,22 +10,6 @@
     (idxs)++;                                                                  \
   }
 
-kernel void pbkdf2_hmac_sha512_test(__global uchar *py, __global uchar *input) {
-
-  ulong mnemonic_long[32];
-  ulong aa[8];
-  uchar result[128];
-  uchar_to_ulong(input, strlen(input), mnemonic_long, 0);
-  INIT_SHA512(aa);
-  pbkdf2_hmac_sha512_long(mnemonic_long, strlen(input), aa);
-  ulong_array_to_char(aa, 8, result);
-
-  if (!strcmp(result, py)) {
-    printf("\nDIFERENTES");
-    printf("Veio de la: %s %s %s\n", input, result, py);
-  }
-}
-
 kernel void generate_combinations(ulong OFFSET, ulong BATCH_SIZE) {
 
   int IDX = get_global_id(0);

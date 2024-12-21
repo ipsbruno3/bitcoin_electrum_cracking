@@ -12,8 +12,7 @@ platforms = cl.get_platforms()
 devices = platforms[0].get_devices()
 
 
-device = if devices[1]  :  devices[1] else  devices[0]
-
+device =devices[1]
 max_work_item_sizes = device.max_work_item_sizes 
 max_work_group_size = device.max_work_group_size
 
