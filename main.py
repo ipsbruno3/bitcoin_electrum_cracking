@@ -1,21 +1,21 @@
-#include "/kernel/sha256.cl"
-#include "/kernel/common.cl"
-#include "/kernel/sha512_hmac.cl"
-
-
 import numpy as np
 import pyopencl as cl
 from mnemonic import Mnemonic
 import time
+
 import struct
+import os
+os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 
 mnemo = Mnemonic("english")
 
+
+
 platforms = cl.get_platforms()
+print(platforms)
 devices = platforms[0].get_devices()
-
-
-device =devices[1]
+print(devices)
+device = devices[0]
 max_work_item_sizes = device.max_work_item_sizes 
 max_work_group_size = device.max_work_group_size
 
@@ -28,9 +28,10 @@ FIXED_WORDS = "actual action amused black abandon adjust winter abandon abandon 
 DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
 FIXED_SEED = "actual action amused black abandon adjust winter "
 
-BATCH_SIZE = 10
-LOCAL_WORKERS = None
-WORKERS = (100000, )
+OFFSET = 0
+LOCAL_WORKERS = (256,)
+WORKERS = (1024000, )
+BATCH_SIZE = 100
 
 
 
@@ -40,12 +41,16 @@ def main():
         print("Erro ao inicializar o OpenCL. Verifique sua instalação ou configuração.")
         return
     print("OpenCL inicializado com sucesso.")
-    try:
-        program = build_program(context, "./kernel/main.cl")
-   
-        for OFFSET in range(100):      
 
-            run_kernel(program, queue , ( (WORKERS[0]*BATCH_SIZE)), OFFSET)
+    try:
+        program = build_program(context,
+                                "./kernel/common.cl",
+                                 "./kernel/sha256.cl",
+                                 "./kernel/sha512_hmac.cl",
+                                "./kernel/main.cl"
+             )
+
+        run_kernel(program, queue)
         print("Kernel executado com sucesso.")
     except Exception as e:
         print(f"Erro ao compilar o programa OpenCL: {e}")
@@ -55,14 +60,7 @@ def main():
 
 def load_program_source(filename):
     with open(filename, 'r') as f:
-        content = f.read()
-    HIGH, LOW = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
-    content = content.replace("TEMPLATE:PARTIAL_SEED", FIXED_SEED)
-    content = content.replace("\"TEMPLATE:PRINT_DEBUG\"", str(1000000)) # Imprimir a cada 1 milhão de resultados
-    content = content.replace("\"TEMPLATE:SEED_MAX\"", str(HIGH))
-    content = content.replace("\"TEMPLATE:SEED_LOW\"", str(LOW))
-    
-    content = content.replace("\"TEMPLATE:OFFSET_LEN\"", str(len(FIXED_SEED)))
+     content = f.read()
     return content
 
 
@@ -111,31 +109,28 @@ def string_to_long_array(s):
     return [struct.unpack('<Q', s[i:i+8].encode('utf-8'))[0] for i in range(0, len(s), 8)]
 
 def mnemonic_to_uint64_pair(indices):
-    binary_string = ''.join(f"{index:011b}" for index in indices)[:-4]  
+    binary_string = ''.join(f"{index:011b}" for index in indices)[:-4] 
     binary_string = binary_string.ljust(128, '0')
     high = int(binary_string[:64], 2)
     low = int(binary_string[64:], 2)
     return high, low
 
 
-contador  = 0
-def run_kernel(program, queue, BATCH_SIZE, OFFSET):
-    global contador
+def run_kernel(program, queue):
+    data = np.arange(11, dtype=np.int64)
+    context = program.context
+    kernel = program.verifySeed
     HIGH, LOW = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
-    contador += 1
-    kernel = program.generate_combinations
-    kernel.set_args(np.uint64(OFFSET), np.uint64(BATCH_SIZE))
+    output_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, size=data.nbytes)
+    kernel.set_args(output_buffer, np.uint64(OFFSET), np.uint64(HIGH), np.uint64(LOW), np.uint64(BATCH_SIZE))
     start_time = time.time()   
     cl.enqueue_nd_range_kernel(queue, kernel, WORKERS, LOCAL_WORKERS).wait()
-    
-    if( "TEMPLATE:PRINT_DEBUG" % contador == 0) :
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        seeds = WORKERS[0] * BATCH_SIZE
-        media = seeds / elapsed_time    
+    end_time = time.time()
+    elapsed_time = end_time - start_time +1
+    seeds = WORKERS[0] * BATCH_SIZE
 
-        print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:.6f} por seg")
-    
+    media = seeds / elapsed_time
+    print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:,} por seg")
     return True
 
 
