@@ -29,7 +29,7 @@ __constant uint K_256[64] = {
 #define H6 0x1f83d9ab
 #define H7 0x5be0cd19
 
-uchar sha256_from_ulong(ulong max, ulong min) {
+uchar sha256_from_byte(ulong max, ulong min) {
 
   uint w[64] = {0};
   uint a, b, c, d, e, f, g, h, temp1, temp2;

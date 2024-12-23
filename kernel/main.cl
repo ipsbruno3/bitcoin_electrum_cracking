@@ -1,58 +1,85 @@
-#define FIX_SEED_STRING(i, idxs)                                               \
+#include "./kernel/bip39.cl"
+
+void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T);
+uchar sha256_from_byte(ulong max, ulong min);
+
+#define CONCAT_BLOCK(b)                                                        \
   {                                                                            \
-    int j, p;                                                                  \
-    for (j = 0, p = indices[(i)]; j < word_lengths[p];                         \
-         j++, p = indices[(i)]) {                                              \
-      mnemonic[(idxs)] = (uchar)words[p][j];                                   \
-      (idxs)++;                                                                \
+    ulong val = 0UL;                                                           \
+    for (int i = 0; i < 8; i++) {                                              \
+      val |= ((ulong)seedString[(b) * 8 + i]) << (8 * i);                      \
     }                                                                          \
-    mnemonic[(idxs)] = ' ';                                                    \
-    (idxs)++;                                                                  \
+    blocks[(b)] = val;                                                         \
   }
 
-kernel void generate_combinations(ulong OFFSET, ulong BATCH_SIZE) {
+#define CONCAT_WORD(w)                                                         \
+  {                                                                            \
+    int wIdx = seedNum[(w)];                                                   \
+    for (int i = 0; i < 9; ++i) {                                              \
+      seedString[offset + i] = wordsString[wIdx][i];                           \
+    }                                                                          \
+    offset += wordsLen[wIdx] + 1;                                              \
+  }
 
-  int IDX = get_global_id(0);
-  ulong seed_max = "TEMPLATE:SEED_MAX";
-  ulong seed_min = "TEMPLATE:SEED_MIN";
-  ulong final = BATCH_SIZE;
-  ulong mnemonic_long[16];
-  uchar mnemonic[128] = "TEMPLATE:PARTIAL_SEED";
-  uint indices[12];
-  ulong pbkdf2[8];
-  const uint index = "TEMPLATE:OFFSET_LEN";
+__kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
+                         ulong V) {
+  ulong idx = get_global_id(0);
 
-  seed_min += +(IDX * BATCH_SIZE) + OFFSET;
+  ulong memHigh = H;
+  ulong memLow = L + (O + idx) * V;
+  ulong finalMem = memLow + V;
 
-  for (ulong iterator = 0; iterator < final; iterator++) {
-    uchar prefix_length = index;
-    indices[7] = (seed_min & (2047UL << 40UL)) >> 40UL;
-    indices[8] = (seed_min & (2047UL << 29UL)) >> 29UL;
-    indices[9] = (seed_min & (2047UL << 18UL)) >> 18UL;
-    indices[10] = (seed_min & (2047UL << 7UL)) >> 7UL;
-    indices[11] = ((seed_min << 57UL) >> 53UL) |
-                  sha256_from_ulong(seed_max, seed_min) >> 4UL;
+  uint seedNum[12] = {0};
+  seedNum[0] = (memHigh & (2047UL << 53UL)) >> 53UL;
+  seedNum[1] = (memHigh & (2047UL << 42UL)) >> 42UL;
+  seedNum[2] = (memHigh & (2047UL << 31UL)) >> 31UL;
+  seedNum[3] = (memHigh & (2047UL << 20UL)) >> 20UL;
+  seedNum[4] = (memHigh & (2047UL << 9UL)) >> 9UL;
+  seedNum[5] = (memHigh << 55UL) >> 53UL | ((memLow & (3UL << 62UL)) >> 62UL);
+  seedNum[6] = (memLow & (2047UL << 51UL)) >> 51UL;
 
-    FIX_SEED_STRING(7, prefix_length)
-    FIX_SEED_STRING(8, prefix_length)
-    FIX_SEED_STRING(9, prefix_length)
-    FIX_SEED_STRING(10, prefix_length)
-    FIX_SEED_STRING(11, prefix_length)
+  uint offset = 0;
+  uchar seedString[128] = {0};
+  ulong blocks[16] = {0};
 
-    mnemonic[prefix_length - 1] = '\0';
-    uchar FINAL = prefix_length;
+  CONCAT_WORD(0);
+  CONCAT_WORD(1);
+  CONCAT_WORD(2);
+  CONCAT_WORD(3);
+  CONCAT_WORD(4);
+  CONCAT_WORD(5);
+  CONCAT_WORD(6);
+  uint oldOffset = offset;
+  uint fixBlock = offset / 8;
+  for (int i = 0; i < fixBlock; i++) {
+    CONCAT_BLOCK(i);
+  }
 
-    while (prefix_length < 128) {
-      mnemonic[prefix_length] = 0;
-      prefix_length++;
+  for (; memLow < finalMem; memLow++) {
+    uchar checksum = sha256_from_byte(memHigh, memLow) >> 4UL;
+    seedNum[7] = (memLow & (2047UL << 40UL)) >> 40UL;
+    seedNum[8] = (memLow & (2047UL << 29UL)) >> 29UL;
+    seedNum[9] = (memLow & (2047UL << 18UL)) >> 18UL;
+    seedNum[10] = (memLow & (2047UL << 7UL)) >> 7UL;
+    seedNum[11] = ((memLow << 57UL) >> 53UL) | checksum;
+
+    CONCAT_WORD(7);
+    CONCAT_WORD(8);
+    CONCAT_WORD(9);
+    CONCAT_WORD(10);
+    CONCAT_WORD(11);
+
+    seedString[offset - 1] = '\0';
+
+    for (int i = fixBlock; i < 16; i++) {
+      CONCAT_BLOCK(i);
     }
+    offset = oldOffset;
 
-    uchar_to_ulong(mnemonic, FINAL, mnemonic_long, 0);
-    INIT_SHA512(pbkdf2);
-    pbkdf2_hmac_sha512_long(mnemonic_long, prefix_length, pbkdf2);
-    if (0 == (seed_min % 1000000) || pbkdf2[0] == 3276273273) {
-      printf("SEED \"%s\"  ->  %s\n",  mnemonic, pbkdf2[0],]);
+    ulong pbkdf2[8] = {0};
+    pbkdf2_hmac_sha512_long(blocks, offset - 1, pbkdf2);
+    if (memLow % 100000 == 0) {
+      printf("\nSeed: |%s|%lu|\n", seedString, pbkdf2[0]);
     }
-    seed_min++;
   }
 }
