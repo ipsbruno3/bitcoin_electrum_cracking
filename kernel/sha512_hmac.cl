@@ -84,6 +84,8 @@ inline ulong little_s1(ulong x) {
     SHA512_STEP(b, c, d, e, f, g, h, a, W[i + 15], K512[i + 15]);              \
   }
 
+#define COPY_EIGHT(dst, src) *(ulong8 *)(dst) = *(ulong8 *)(src)
+/*
 #define COPY_EIGHT(dst, src)                                                   \
   (dst)[0] = (src)[0];                                                         \
   (dst)[1] = (src)[1];                                                         \
@@ -93,7 +95,7 @@ inline ulong little_s1(ulong x) {
   (dst)[5] = (src)[5];                                                         \
   (dst)[6] = (src)[6];                                                         \
   (dst)[7] = (src)[7];
-
+*/
 #define FUNCAO_W1(i) W[i] = message[i]
 #define FUNCAO_W2(i) W[i] = message[16 + i]
 #define FUNCAO_W3(i) W[i] = message[block_idx * 16 + i]
