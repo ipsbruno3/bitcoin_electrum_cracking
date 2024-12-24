@@ -173,67 +173,42 @@ static inline void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
   H[7] += h;
 }
 
-static inline void PBKDF2_ROUND(ulong *UX, ulong *inner_H, ulong *U,
-                                ulong *inner_data, ulong *outer_data,
-                                ulong *T) {
-  INIT_SHA512(UX);
-  INIT_SHA512(inner_H);
-  ADJUST_DATA(inner_data, U);
-  sha512_hash_two_blocks_message(inner_data, inner_H);
-  ADJUST_DATA(outer_data, inner_H);
-  sha512_hash_two_blocks_message(outer_data, UX);
-  T[0] ^= UX[0];
-  T[1] ^= UX[1];
-  T[2] ^= UX[2];
-  T[3] ^= UX[3];
-  T[4] ^= UX[4];
-  T[5] ^= UX[5];
-  T[6] ^= UX[6];
-  T[7] ^= UX[7];
-  COPY_EIGHT(U, UX);
-}
-
-void hmac_sha512_long(ulong *inner_data, ulong *outer_data, ulong *J) {
-  inner_data[16] = 7885351518267664739UL;
-  inner_data[17] = 6442450944UL;
-  inner_data[18] = 0, inner_data[19] = 0, inner_data[20] = 0,
-  inner_data[21] = 0, inner_data[22] = 0, inner_data[23] = 0,
-  inner_data[24] = 0, inner_data[25] = 0, inner_data[26] = 0,
-  inner_data[27] = 0, inner_data[28] = 0, inner_data[29] = 0,
-  inner_data[30] = 0, inner_data[31] = 1120UL;
-
-  ulong inner_H[8];
-  INIT_SHA512(inner_H);
-  sha512_hash_two_blocks_message(inner_data, inner_H);
-  ADJUST_DATA(outer_data, inner_H);
-  sha512_hash_two_blocks_message(outer_data, J);
-}
-
-void hmac_prepare(ulong *key, uchar key_len, ulong *inner_data,
-                  ulong *outer_data) {
-
-  uchar key_ulongs = ((key_len + 7) / 8);
-#pragma loop pipeline(enable)
-#pragma cl_kernel_vectorize_enable
-#pragma INDEPENDENT
-#pragma OPENCL INDEPENDENT
-  for (int i = 0; i <= key_ulongs; ++i) {
-    inner_data[i] = key[i] ^ 0x3636363636363636UL;
-    outer_data[i] = key[i] ^ 0x5C5C5C5C5C5C5C5CUL;
-  }
-}
-
 void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
   INIT_SHA512(T);
-  ulong inner_data[32] = {
-      0x3636363636363636UL, 0x3636363636363636UL, 0x3636363636363636UL,
-      0x3636363636363636UL, 0x3636363636363636UL, 0x3636363636363636UL,
-      0x3636363636363636UL, 0x3636363636363636UL, 0x3636363636363636UL,
-      0x3636363636363636UL, 0x3636363636363636UL, 0x3636363636363636UL,
-      0x3636363636363636UL, 0x3636363636363636UL, 0x3636363636363636UL,
-      0x3636363636363636UL, 0x3636363636363636UL, 0x3636363636363636UL,
-      0x3636363636363636UL, 0x3636363636363636UL, 0x3636363636363636UL,
-      0x3636363636363636UL, 0x3636363636363636UL, 0x3636363636363636UL};
+
+  ulong inner_data[32] = {0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          0x3636363636363636UL,
+                          7885351518267664739UL,
+                          6442450944UL,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          1120UL};
+
   ulong outer_data[32] = {
       0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
       0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
@@ -244,17 +219,39 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
       0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
       0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL};
 
-  hmac_prepare(password, password_len, inner_data, outer_data);
-  hmac_sha512_long(inner_data, outer_data, T);
-
+  uchar key_ulongs = ((password_len + 7) / 8);
+  for (uchar i = 0; i <= key_ulongs; ++i) {
+    inner_data[i] = password[i] ^ 0x3636363636363636UL;
+    outer_data[i] = password[i] ^ 0x5C5C5C5C5C5C5C5CUL;
+  }
+  ulong inner_H[8];
+  INIT_SHA512(inner_H);
+  sha512_hash_two_blocks_message(inner_data, inner_H);
+  ADJUST_DATA(outer_data, inner_H);
+  sha512_hash_two_blocks_message(outer_data, T);
   ulong UX[8];
   ulong U[8];
 
   COPY_EIGHT(U, T);
-  ulong inner_H[8];
+  ulong inner_J[8];
 #pragma nounroll
 #pragma loop dependence(enable)
-  for (int i = 1; i < 2048; ++i) {
-    PBKDF2_ROUND(UX, inner_H, U, inner_data, outer_data, T);
+
+  for (ushort i = 1; i < 2048; ++i) {
+    INIT_SHA512(UX);
+    INIT_SHA512(inner_H);
+    ADJUST_DATA(inner_data, U);
+    sha512_hash_two_blocks_message(inner_data, inner_H);
+    ADJUST_DATA(outer_data, inner_H);
+    sha512_hash_two_blocks_message(outer_data, UX);
+    T[0] ^= UX[0];
+    T[1] ^= UX[1];
+    T[2] ^= UX[2];
+    T[3] ^= UX[3];
+    T[4] ^= UX[4];
+    T[5] ^= UX[5];
+    T[6] ^= UX[6];
+    T[7] ^= UX[7];
+    COPY_EIGHT(U, UX);
   }
 }

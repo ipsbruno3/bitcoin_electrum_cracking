@@ -42,10 +42,10 @@ __kernel void pbkdf2_hmac_sha512_test(__global uchar *py,
 
 __kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
                          ulong V) {
-  ulong idx = get_global_id(0);
-
+  int gid = get_global_id(0);
+  int total_work_items = get_global_size(0);
   ulong memHigh = H;
-  ulong memLow = L + (O + idx) * V;
+  ulong memLow = L + (O + gid) * V;
   ulong finalMem = memLow + V;
 
   uint seedNum[12] = {0};
@@ -70,6 +70,8 @@ __kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
   CONCAT_WORD(6);
   uint oldOffset = offset;
   uint fixBlock = offset / 8;
+
+#pragma unroll 9
   for (int i = 0; i < fixBlock; i++) {
     CONCAT_BLOCK(i);
   }
@@ -92,6 +94,7 @@ __kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
 
     seedString[offset - 1] = '\0';
 
+#pragma unroll
     for (int i = fixBlock; i < 16; i++) {
       CONCAT_BLOCK(i);
     }

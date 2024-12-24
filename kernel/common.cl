@@ -33,7 +33,6 @@ void uchar_to_ulong2(const char *input, int length, ulong *output, int offset) {
     }
   }
 }
-
 inline void uchar_to_ulong(const uchar *input, uint input_len, ulong *output,
                            const uchar offset) {
   const uchar num_ulongs = (input_len + 7) / 8;
