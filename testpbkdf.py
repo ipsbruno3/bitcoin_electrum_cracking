@@ -1,103 +1,65 @@
-import curses
+import numpy as np
+import pyopencl as cl
+from hashlib import pbkdf2_hmac
 import time
+import string
 import random
 
-def main(stdscr):
-    # Initialize the curses screen
-    curses.curs_set(0)  # Hide cursor
-    stdscr.nodelay(1)   # Non-blocking input
-    stdscr.timeout(100)  # Refresh screen every 100ms
+def load_program_source(filename):
+    with open(filename, 'r') as f:
+        return f.read()
 
-    # Set colors
-    curses.start_color()
-    curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Green text on black background
-    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)  # Red text on black background
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Yellow text on black background
-    curses.init_pair(4, curses.COLOR_WHITE, curses.COLOR_BLACK)  # White text on black background
-    curses.init_pair(5, curses.COLOR_BLUE, curses.COLOR_BLACK)  # Blue text on black background
+def initialize_opencl():
+    try:
+        context = cl.Context([device])
+        queue = cl.CommandQueue(context)
+        return context, queue
+    except Exception as e:
+        print(f"Erro ao inicializar o OpenCL: {e}")
+        return None, None
 
-    # Game variables
-    cphrase = "wubbalubbadubdub"
-    ci = 0
-    score = 0
-    max_morties = 18
-    morty_count = 0
-    i = 1
-    j = 1
+def build_program(context, *filenames):
+    source_code = ""
+    for filename in filenames:
+        source_code += load_program_source(filename) + "\n\n\n"
+    return cl.Program(context, source_code).build()
 
-    # Draw initial screen
-    stdscr.clear()
-    stdscr.refresh()
 
-    # Display title
-    stdscr.addstr(18, 15, "A game for the ONCE UPON A TIME, RICK AND MORTY Jam", curses.color_pair(5))
-    stdscr.addstr(19, 15, "By Chompicore. Written in Python", curses.color_pair(5))
-    stdscr.addstr(22, 28, "[DO NOT PRESS ANY KEY!!]", curses.color_pair(7))
 
-    # Wait for 8 seconds
-    time.sleep(8)
+def pbkdf2_python(key):
+    # Calculando o PBKDF2 em Python para comparação
+    return pbkdf2_hmac('sha512', key,  "mnemonic".encode('utf-8'),2048)
 
-    # Game instructions
-    stdscr.clear()
-    stdscr.addstr(0, 0, "*** HOW TO PLAY ***", curses.color_pair(1))
-    stdscr.addstr(2, 0, "You have to type Rick's catchphrase 'WUBBA LUBBA DUB DUB'.", curses.color_pair(1))
-    stdscr.addstr(3, 0, "No spaces allowed. Every time you make a mistake, a new Morty will appear.", curses.color_pair(1))
-    stdscr.addstr(4, 0, "With 18 Morties, it's game over. [ESC] = Quit game", curses.color_pair(1))
-    stdscr.addstr(6, 0, "Good luck!", curses.color_pair(2))
-    stdscr.refresh()
+def run_kernel(program, queue, string):
+    context = program.context
 
-    # Wait for user to press a key
-    stdscr.getch()
 
-    # Game loop
-    while True:
-        stdscr.clear()
-        stdscr.refresh()
 
-        k = stdscr.getch()
+    string_buffer = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=(string))
+    ss = str(pbkdf2_python(string).hex()).encode()
+    result_buffer = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ss)
 
-        if k == 27:  # Escape key to quit
-            break
+    kernel = program.pbkdf2_hmac_sha512_test
+    kernel.set_args(result_buffer, string_buffer)
 
-        # Convert to lowercase
-        k = chr(k).lower()
+    cl.enqueue_nd_range_kernel(queue, kernel, (1,), None).wait()
 
-        # Check if the key matches the current letter of the phrase
-        if k != cphrase[ci]:
-            # Display mistake (new Morty appears)
-            morty_count += 1
-            if morty_count >= max_morties:
-                break
 
-            stdscr.addstr(i, j, "ÜÛÛÛÛÛÛÜ  ", curses.color_pair(2))
-            stdscr.addstr(i+1, j, " ÛÛ±±±±±±  ", curses.color_pair(4))
-            stdscr.addstr(i+2, j, " ±±ÜÜ±±ÜÜ±± ", curses.color_pair(4))
-            stdscr.addstr(i+3, j, " Ü±±±±±±Û ", curses.color_pair(4))
-            stdscr.addstr(i+4, j, " ÛÛ±±±±±± ", curses.color_pair(4))
-            stdscr.addstr(i+5, j, " ßÛÛÛÛÛÛÛÛß", curses.color_pair(3))
-            stdscr.refresh()
+    return 
 
-            i += 8
-            if i > 18:
-                break
-
-        else:
-            # Correct input, update game state
-            ci += 1
-            if ci >= len(cphrase):
-                ci = 0
-            score += 50
-
-        stdscr.refresh()
-        time.sleep(0.1)  # Game speed control
-
-    # Game over
-    stdscr.clear()
-    stdscr.addstr(5, 30, "YOUR SCORE: ", curses.color_pair(2))
-    stdscr.addstr(5, 40, str(score), curses.color_pair(4))
-    stdscr.addstr(7, 30, "Game Over!", curses.color_pair(2))
-    stdscr.refresh()
-    stdscr.getch()
+def ulong_list_to_string(ulong_list):
+    byte_list = b''.join([ulong.to_bytes(8, byteorder='little') for ulong in ulong_list])
+    return byte_list.decode('utf-8').rstrip('\x00')  # Remove padding zero bytes
 
 if __name__ == "__main__":
-    curses.wrapper(main)
+    platforms = cl.get_platforms()
+    devices = platforms[0].get_devices()
+
+    device = devices[0]
+
+    context, queue = initialize_opencl()
+    program = build_program(context, "./kernel/common.cl",  "./kernel/sha512_hmac.cl", "./kernel/sha256.cl", "./kernel/main.cl")
+
+    for i in range(10000):
+        strs = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(95)).encode()
+        run_kernel(program, queue, strs)

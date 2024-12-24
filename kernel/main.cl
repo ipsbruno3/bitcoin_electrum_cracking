@@ -21,6 +21,25 @@ uchar sha256_from_byte(ulong max, ulong min);
     offset += wordsLen[wIdx] + 1;                                              \
   }
 
+__kernel void pbkdf2_hmac_sha512_test(__global uchar *py,
+                                      __global uchar *input) {
+
+  ulong mnemonic_long[32];
+  ulong aa[8];
+  uchar result[128];
+  uchar_to_ulong(input, strlen(input), mnemonic_long, 0);
+  INIT_SHA512(aa);
+  pbkdf2_hmac_sha512_long(mnemonic_long, strlen(input), aa);
+  ulong_array_to_char(aa, 8, result);
+
+  if (strcmp(result, py)) {
+    printf("\niguais");
+  } else {
+    printf("\ndiferentes\n");
+    printf("Veio de la: %s %s %s\n", input, result, py);
+  }
+}
+
 __kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
                          ulong V) {
   ulong idx = get_global_id(0);
@@ -54,6 +73,8 @@ __kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
   for (int i = 0; i < fixBlock; i++) {
     CONCAT_BLOCK(i);
   }
+  ulong mnemonic_long[16] = {0};
+  uchar_to_ulong(seedString, offset, mnemonic_long, 0);
 
   for (; memLow < finalMem; memLow++) {
     uchar checksum = sha256_from_byte(memHigh, memLow) >> 4UL;
@@ -74,12 +95,19 @@ __kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
     for (int i = fixBlock; i < 16; i++) {
       CONCAT_BLOCK(i);
     }
-    offset = oldOffset;
 
-    ulong pbkdf2[8] = {0};
-    pbkdf2_hmac_sha512_long(blocks, offset - 1, pbkdf2);
-    if (memLow % 100000 == 0) {
-      printf("\nSeed: |%s|%lu|\n", seedString, pbkdf2[0]);
+    ulong pbkdf2_long[8] = {0};
+    uchar result[128] = {0};
+    uchar_to_ulong(seedString, offset - 1, mnemonic_long, fixBlock);
+    ////////////////////////
+
+    pbkdf2_hmac_sha512_long(mnemonic_long, offset - 1, pbkdf2_long);
+
+    if (memLow % 10000000 == 0) {
+      ulong_array_to_char(pbkdf2_long, 8, result);
+      printf("\nSeed: |%s|%s|\n", seedString, result);
     }
+
+    offset = oldOffset;
   }
 }

@@ -86,3 +86,12 @@ uchar sha256_from_byte(ulong max, ulong min) {
 
   return (uchar)(((H0 + a) >> 24) & 0xFF);
 }
+
+#undef H0
+#undef H1
+#undef H2
+#undef H3
+#undef H4
+#undef H5
+#undef H6
+#undef H7
