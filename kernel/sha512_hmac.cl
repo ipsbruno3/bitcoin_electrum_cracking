@@ -1,4 +1,13 @@
 
+//
+// #define UNROLL_FACTOR 16
+/*
+#define INIT_SHA512(a)                                                         \
+  *(ulong8 *)a = (ulong8){0x6a09e667f3bcc908UL, 0xbb67ae8584caa73bUL,          \
+                          0x3c6ef372fe94f82bUL, 0xa54ff53a5f1d36f1UL,          \
+                          0x510e527fade682d1UL, 0x9b05688c2b3e6c1fUL,          \
+                          0x1f83d9abfb41bd6bUL, 0x5be0cd19137e2179UL};
+*/
 #define INIT_SHA512(a)                                                         \
   (a)[0] = 0x6a09e667f3bcc908UL;                                               \
   (a)[1] = 0xbb67ae8584caa73bUL;                                               \
@@ -38,10 +47,7 @@ __constant static const ulong K512[80] = {
     0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a,
     0x5fcb6fab3ad6faec, 0x6c44198c4a475817};
 
-#define ROTATE_RIGHT(x, n) ((x >> n) | (x << (64UL - n)))
-#define ROTATE(x, y) (((x) >> (y)) | ((x) << (64 - (y))))
-
-#define F1(x, y, z) (bitselect(z, y, x))
+#define Ch(x, y, z) (bitselect(z, y, x))
 #define F0(x, y, z) (bitselect(x, y, ((x) ^ (z))))
 
 #define rotl64(a, n) (rotate((a), (n)))
@@ -60,11 +66,11 @@ inline ulong little_s1(ulong x) {
 
 #define SHA512_STEP(a, b, c, d, e, f, g, h, x, K)                              \
   {                                                                            \
-    h += K + SHA512_S1(e) + F1(e, f, g) + x;                                   \
+    h += K + SHA512_S1(e) + Ch(e, f, g) + x;                                   \
     d += h;                                                                    \
     h += SHA512_S0(a) + F0(a, b, c);                                           \
   }
-#define ROUND_STEP_SHA512(i)                                                   \
+#define ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, i)                        \
   {                                                                            \
     SHA512_STEP(a, b, c, d, e, f, g, h, W[i + 0], K512[i + 0]);                \
     SHA512_STEP(h, a, b, c, d, e, f, g, W[i + 1], K512[i + 1]);                \
@@ -85,8 +91,9 @@ inline ulong little_s1(ulong x) {
   }
 
 #define COPY_EIGHT(dst, src) *(ulong8 *)(dst) = *(ulong8 *)(src)
-/*
-#define COPY_EIGHT(dst, src)                                                   \
+#define COPY_DOUBLE_EIGHT(dst, src) *(ulong16 *)(dst) = *(ulong16 *)(src)
+
+/*#define COPY_EIGHT(dst, src) \
   (dst)[0] = (src)[0];                                                         \
   (dst)[1] = (src)[1];                                                         \
   (dst)[2] = (src)[2];                                                         \
@@ -96,55 +103,20 @@ inline ulong little_s1(ulong x) {
   (dst)[6] = (src)[6];                                                         \
   (dst)[7] = (src)[7];
 */
-#define FUNCAO_W1(i) W[i] = message[i]
-#define FUNCAO_W2(i) W[i] = message[16 + i]
-#define FUNCAO_W3(i) W[i] = message[block_idx * 16 + i]
 
 #define ADJUST_DATA(a, b)                                                      \
-  (a)[16] = (b)[0];                                                            \
-  (a)[17] = (b)[1];                                                            \
-  (a)[18] = (b)[2];                                                            \
-  (a)[19] = (b)[3];                                                            \
-  (a)[20] = (b)[4];                                                            \
-  (a)[21] = (b)[5];                                                            \
-  (a)[22] = (b)[6];                                                            \
-  (a)[23] = (b)[7];                                                            \
+  *(ulong8 *)(a + 16) = *(ulong8 *)(b);                                        \
   (a)[24] = 0x8000000000000000UL;                                              \
   (a)[31] = 1536UL;
 
-static inline void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
+static inline void sha512_procces(ulong *message, ulong *H) {
 
   ulong W[80];
-  ulong a, b, c, d, e, f, g, h, i;
+  uchar i;
+  ulong a, b, c, d, e, f, g, h;
   ulong S0, S1, ch, maj, temp1, temp2, W_15, W_2;
 
-  for (i = 0; i < 16; i++)
-    FUNCAO_W1(i);
-
-  for (int i = 16; i < 80; i++) {
-    W[i] = W[i - 16] + little_s0(W[i - 15]) + W[i - 7] + little_s1(W[i - 2]);
-  }
-
-  a = H[0];
-  b = H[1];
-  c = H[2];
-  d = H[3];
-  e = H[4];
-  f = H[5];
-  g = H[6];
-  h = H[7];
-
-  ROUND_STEP_SHA512(0);
-  ROUND_STEP_SHA512(16);
-  ROUND_STEP_SHA512(32);
-  ROUND_STEP_SHA512(48);
-  ROUND_STEP_SHA512(64);
-
-  H[0] += a, H[1] += b, H[2] += c, H[3] += d, H[4] += e, H[5] += f, H[6] += g,
-      H[7] += h;
-
-  for (i = 0; i < 16; i++)
-    FUNCAO_W2(i);
+  COPY_DOUBLE_EIGHT(W, message);
 
   for (i = 16; i < 80; i++) {
     W[i] = W[i - 16] + little_s0(W[i - 15]) + W[i - 7] + little_s1(W[i - 2]);
@@ -159,20 +131,19 @@ static inline void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
   g = H[6];
   h = H[7];
 
-  ROUND_STEP_SHA512(0);
-  ROUND_STEP_SHA512(16);
-  ROUND_STEP_SHA512(32);
-  ROUND_STEP_SHA512(48);
-  ROUND_STEP_SHA512(64);
+  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 0);
+  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 16);
+  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 32);
+  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 48);
+  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 64);
 
-  H[0] += a;
-  H[1] += b;
-  H[2] += c;
-  H[3] += d;
-  H[4] += e;
-  H[5] += f;
-  H[6] += g;
-  H[7] += h;
+  H[0] += a, H[1] += b, H[2] += c, H[3] += d, H[4] += e, H[5] += f, H[6] += g,
+      H[7] += h;
+}
+
+static inline void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
+  sha512_procces(message, H);
+  sha512_procces(message + 16, H);
 }
 
 void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
@@ -222,6 +193,7 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
       0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL};
 
   uchar key_ulongs = ((password_len + 7) / 8);
+#pragma unroll 4
   for (uchar i = 0; i <= key_ulongs; ++i) {
     inner_data[i] = password[i] ^ 0x3636363636363636UL;
     outer_data[i] = password[i] ^ 0x5C5C5C5C5C5C5C5CUL;
