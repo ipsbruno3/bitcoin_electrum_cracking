@@ -1,13 +1,5 @@
 
-//
-// #define UNROLL_FACTOR 16
-/*
-#define INIT_SHA512(a)                                                         \
-  *(ulong8 *)a = (ulong8){0x6a09e667f3bcc908UL, 0xbb67ae8584caa73bUL,          \
-                          0x3c6ef372fe94f82bUL, 0xa54ff53a5f1d36f1UL,          \
-                          0x510e527fade682d1UL, 0x9b05688c2b3e6c1fUL,          \
-                          0x1f83d9abfb41bd6bUL, 0x5be0cd19137e2179UL};
-*/
+#define UNROLL_FACTOR 16
 #define INIT_SHA512(a)                                                         \
   (a)[0] = 0x6a09e667f3bcc908UL;                                               \
   (a)[1] = 0xbb67ae8584caa73bUL;                                               \
@@ -92,8 +84,8 @@ inline ulong little_s1(ulong x) {
 
 #define COPY_EIGHT(dst, src) *(ulong8 *)(dst) = *(ulong8 *)(src)
 #define COPY_DOUBLE_EIGHT(dst, src) *(ulong16 *)(dst) = *(ulong16 *)(src)
-
-/*#define COPY_EIGHT(dst, src) \
+/*
+#define COPY_EIGHT(dst, src)                                                   \
   (dst)[0] = (src)[0];                                                         \
   (dst)[1] = (src)[1];                                                         \
   (dst)[2] = (src)[2];                                                         \
@@ -109,11 +101,10 @@ inline ulong little_s1(ulong x) {
   (a)[24] = 0x8000000000000000UL;                                              \
   (a)[31] = 1536UL;
 
-static inline void sha512_procces(ulong *message, ulong *H) {
-
+static inline void sha512_procces(ulong *message, ulong8 H) {
+  ulong8 vH = vload8(0, H);
   ulong W[80];
-  uchar i;
-  ulong a, b, c, d, e, f, g, h;
+  int i;
   ulong S0, S1, ch, maj, temp1, temp2, W_15, W_2;
 
   COPY_DOUBLE_EIGHT(W, message);
@@ -122,14 +113,14 @@ static inline void sha512_procces(ulong *message, ulong *H) {
     W[i] = W[i - 16] + little_s0(W[i - 15]) + W[i - 7] + little_s1(W[i - 2]);
   }
 
-  a = H[0];
-  b = H[1];
-  c = H[2];
-  d = H[3];
-  e = H[4];
-  f = H[5];
-  g = H[6];
-  h = H[7];
+  ulong a = vH.s0;
+  ulong b = vH.s1;
+  ulong c = vH.s2;
+  ulong d = vH.s3;
+  ulong e = vH.s4;
+  ulong f = vH.s5;
+  ulong g = vH.s6;
+  ulong h = vH.s7;
 
   ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 0);
   ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 16);
