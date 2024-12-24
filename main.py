@@ -29,9 +29,9 @@ DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
 FIXED_SEED = "actual action amused black abandon adjust winter "
 
 OFFSET = 0
-LOCAL_WORKERS = (256,)
+LOCAL_WORKERS = (64,)
 WORKERS = (512000, )
-BATCH_SIZE = 10
+BATCH_SIZE = 100
 
 
 

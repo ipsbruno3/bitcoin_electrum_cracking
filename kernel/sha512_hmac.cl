@@ -1,5 +1,4 @@
 
-#define UNROLL_FACTOR 16
 #define INIT_SHA512(a)                                                         \
   (a)[0] = 0x6a09e667f3bcc908UL;                                               \
   (a)[1] = 0xbb67ae8584caa73bUL;                                               \
@@ -39,7 +38,10 @@ __constant static const ulong K512[80] = {
     0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a,
     0x5fcb6fab3ad6faec, 0x6c44198c4a475817};
 
-#define Ch(x, y, z) (bitselect(z, y, x))
+#define ROTATE_RIGHT(x, n) ((x >> n) | (x << (64UL - n)))
+#define ROTATE(x, y) (((x) >> (y)) | ((x) << (64 - (y))))
+
+#define F1(x, y, z) (bitselect(z, y, x))
 #define F0(x, y, z) (bitselect(x, y, ((x) ^ (z))))
 
 #define rotl64(a, n) (rotate((a), (n)))
@@ -58,11 +60,11 @@ inline ulong little_s1(ulong x) {
 
 #define SHA512_STEP(a, b, c, d, e, f, g, h, x, K)                              \
   {                                                                            \
-    h += K + SHA512_S1(e) + Ch(e, f, g) + x;                                   \
+    h += K + SHA512_S1(e) + F1(e, f, g) + x;                                   \
     d += h;                                                                    \
     h += SHA512_S0(a) + F0(a, b, c);                                           \
   }
-#define ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, i)                        \
+#define ROUND_STEP_SHA512(i)                                                   \
   {                                                                            \
     SHA512_STEP(a, b, c, d, e, f, g, h, W[i + 0], K512[i + 0]);                \
     SHA512_STEP(h, a, b, c, d, e, f, g, W[i + 1], K512[i + 1]);                \
@@ -81,10 +83,9 @@ inline ulong little_s1(ulong x) {
     SHA512_STEP(c, d, e, f, g, h, a, b, W[i + 14], K512[i + 14]);              \
     SHA512_STEP(b, c, d, e, f, g, h, a, W[i + 15], K512[i + 15]);              \
   }
-
 #define COPY_EIGHT(dst, src) *(ulong8 *)(dst) = *(ulong8 *)(src)
 #define COPY_DOUBLE_EIGHT(dst, src) *(ulong16 *)(dst) = *(ulong16 *)(src)
-/*
+/**-
 #define COPY_EIGHT(dst, src)                                                   \
   (dst)[0] = (src)[0];                                                         \
   (dst)[1] = (src)[1];                                                         \
@@ -94,39 +95,35 @@ inline ulong little_s1(ulong x) {
   (dst)[5] = (src)[5];                                                         \
   (dst)[6] = (src)[6];                                                         \
   (dst)[7] = (src)[7];
-*/
+ */
+#define ADJUST_DATA(a, b)
 
-#define ADJUST_DATA(a, b)                                                      \
-  *(ulong8 *)(a + 16) = *(ulong8 *)(b);                                        \
-  (a)[24] = 0x8000000000000000UL;                                              \
-  (a)[31] = 1536UL;
+static inline void sha512_procces(ulong *message, ulong *H) {
 
-static inline void sha512_procces(ulong *message, ulong8 H) {
-  ulong8 vH = vload8(0, H);
   ulong W[80];
-  int i;
+  ulong a, b, c, d, e, f, g, h, i;
   ulong S0, S1, ch, maj, temp1, temp2, W_15, W_2;
 
   COPY_DOUBLE_EIGHT(W, message);
-
-  for (i = 16; i < 80; i++) {
+#pragma unroll 64
+  for (int i = 16; i < 80; i++) {
     W[i] = W[i - 16] + little_s0(W[i - 15]) + W[i - 7] + little_s1(W[i - 2]);
   }
 
-  ulong a = vH.s0;
-  ulong b = vH.s1;
-  ulong c = vH.s2;
-  ulong d = vH.s3;
-  ulong e = vH.s4;
-  ulong f = vH.s5;
-  ulong g = vH.s6;
-  ulong h = vH.s7;
+  a = H[0];
+  b = H[1];
+  c = H[2];
+  d = H[3];
+  e = H[4];
+  f = H[5];
+  g = H[6];
+  h = H[7];
 
-  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 0);
-  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 16);
-  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 32);
-  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 48);
-  ROUND_STEP_SHA512(a, b, c, d, e, f, g, h, W, 64);
+  ROUND_STEP_SHA512(0);
+  ROUND_STEP_SHA512(16);
+  ROUND_STEP_SHA512(32);
+  ROUND_STEP_SHA512(48);
+  ROUND_STEP_SHA512(64);
 
   H[0] += a, H[1] += b, H[2] += c, H[3] += d, H[4] += e, H[5] += f, H[6] += g,
       H[7] += h;
@@ -173,50 +170,71 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
                           0,
                           1120UL};
 
-  ulong outer_data[32] = {
-      0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
-      0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
-      0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
-      0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
-      0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
-      0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
-      0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL,
-      0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL, 0x5C5C5C5C5C5C5C5CUL};
+  ulong outer_data[40] = {0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x5C5C5C5C5C5C5C5CUL,
+                          0x8000000000000000UL,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          1536UL,
+                          0x6a09e667f3bcc908UL,
+                          0xbb67ae8584caa73bUL,
+                          0x3c6ef372fe94f82bUL,
+                          0xa54ff53a5f1d36f1UL,
+                          0x510e527fade682d1UL,
+                          0x9b05688c2b3e6c1fUL,
+                          0x1f83d9abfb41bd6bUL,
+                          0x5be0cd19137e2179UL};
 
   uchar key_ulongs = ((password_len + 7) / 8);
-#pragma unroll 4
+#pragma unroll 16
   for (uchar i = 0; i <= key_ulongs; ++i) {
     inner_data[i] = password[i] ^ 0x3636363636363636UL;
     outer_data[i] = password[i] ^ 0x5C5C5C5C5C5C5C5CUL;
   }
-  ulong inner_H[8];
-  INIT_SHA512(inner_H);
-  sha512_hash_two_blocks_message(inner_data, inner_H);
-  ADJUST_DATA(outer_data, inner_H);
+  sha512_hash_two_blocks_message(inner_data, outer_data + 32);
+  COPY_EIGHT(outer_data + 16, outer_data + 32);
   sha512_hash_two_blocks_message(outer_data, T);
-  ulong UX[8];
   ulong U[8];
-
   COPY_EIGHT(U, T);
-  ulong inner_J[8];
-#pragma nounroll
-#pragma loop dependence(enable)
+  inner_data[24] = 0x8000000000000000UL;
+  inner_data[31] = 1536UL;
+  COPY_EIGHT(outer_data + 16, T);
+  outer_data[24] = 0x8000000000000000UL;
+  outer_data[31] = 1536UL;
 
   for (ushort i = 1; i < 2048; ++i) {
-    INIT_SHA512(UX);
-    INIT_SHA512(inner_H);
-    ADJUST_DATA(inner_data, U);
-    sha512_hash_two_blocks_message(inner_data, inner_H);
-    ADJUST_DATA(outer_data, inner_H);
-    sha512_hash_two_blocks_message(outer_data, UX);
-    T[0] ^= UX[0];
-    T[1] ^= UX[1];
-    T[2] ^= UX[2];
-    T[3] ^= UX[3];
-    T[4] ^= UX[4];
-    T[5] ^= UX[5];
-    T[6] ^= UX[6];
-    T[7] ^= UX[7];
-    COPY_EIGHT(U, UX);
+    COPY_EIGHT(inner_data + 16, U);
+    INIT_SHA512(U);
+    sha512_hash_two_blocks_message(inner_data, U);
+    COPY_EIGHT(outer_data + 16, U);
+    INIT_SHA512(U);
+    sha512_hash_two_blocks_message(outer_data, U);
+    *(ulong8 *)(T) ^= *(ulong8 *)(U);
   }
 }

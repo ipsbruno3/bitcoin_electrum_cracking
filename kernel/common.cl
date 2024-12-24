@@ -59,7 +59,7 @@ inline void ulong_array_to_char(const ulong *input, uint input_len,
       *output++ = hex[byte & 0x0F];
     }
   }
-  *output = '\0'; // Adiciona o terminador de string
+  *output = '\0';
 }
 void ulong_to_char_buffer(const ulong *ulong_array, int count, uchar *output) {
   int offset = 0;
@@ -72,7 +72,6 @@ void ulong_to_char_buffer(const ulong *ulong_array, int count, uchar *output) {
       }
     }
   }
-  // Lembra-se que ele corta o último caractere!
   output[offset - 1] = '\0';
 }
 
