@@ -40,10 +40,11 @@ __kernel void pbkdf2_hmac_sha512_test(__global uchar *py,
   }
 }
 
+
+
 __kernel void verify(__global ulong *L, __global ulong *H,
                      __global ulong *output) {
-  int gid = get_global_id(0);
-
+int  gid = get_global_id(0);
   ulong memHigh = H[0];
   ulong firstMem = L[0];
   ulong memLow = firstMem + gid;
@@ -120,4 +121,6 @@ __kernel void verify(__global ulong *L, __global ulong *H,
   output[index + 8] = memLow;
   output[index + 9] = memHigh;
   offset = oldOffset;
+
+  
 }
