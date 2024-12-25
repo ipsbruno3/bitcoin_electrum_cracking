@@ -96,7 +96,7 @@ inline ulong little_s1(ulong x) {
   (dst)[6] = (src)[6];                                                         \
   (dst)[7] = (src)[7];
  */
-#define ADJUST_DATA(a, b)
+
 
 static inline void sha512_procces(ulong *message, ulong *H) {
 
@@ -231,9 +231,7 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
   for (ushort i = 1; i < 2048; ++i) {
     COPY_EIGHT(inner_data + 16, U);
     INIT_SHA512(U);
-    sha512_procces(meinner_datassage, U);
-    sha512_procces(inner_data + 16, U);
-
+    sha512_hash_two_blocks_message(inner_data, U);
     COPY_EIGHT(outer_data + 16, U);
     INIT_SHA512(U);
     sha512_hash_two_blocks_message(outer_data, U);

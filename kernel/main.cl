@@ -33,21 +33,23 @@ __kernel void pbkdf2_hmac_sha512_test(__global uchar *py,
   ulong_array_to_char(aa, 8, result);
 
   if (strcmp(result, py)) {
-    printf("\niguais");
+    printf("\nIguais");
   } else {
-    printf("\ndiferentes\n");
-    printf("Veio de la: %s %s %s\n", input, result, py);
+    printf("\nDiferentes: ");
+    printf("Veio de la: %s %s %s", input, result, py);
   }
 }
 
-__kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
-                         ulong V) {
+__kernel void verify(__global ulong *L, __global ulong *H,
+                     __global ulong *output) {
   int gid = get_global_id(0);
-  int total_work_items = get_global_size(0);
-  ulong memHigh = H;
-  ulong memLow = L + (O + gid) * V;
-  ulong finalMem = memLow + V;
 
+  ulong memHigh = H[0];
+  ulong firstMem = L[0];
+  ulong memLow = firstMem + gid;
+  if (!firstMem)
+    printf("gid? %d | memLow: %lu firstmem: %lu e memHigh: %lu\n", gid, memLow,
+           L[0], memHigh);
   uint seedNum[12] = {0};
   seedNum[0] = (memHigh & (2047UL << 53UL)) >> 53UL;
   seedNum[1] = (memHigh & (2047UL << 42UL)) >> 42UL;
@@ -60,7 +62,7 @@ __kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
   uint offset = 0;
   uchar seedString[128] = {0};
   ulong blocks[16] = {0};
-
+  
   CONCAT_WORD(0);
   CONCAT_WORD(1);
   CONCAT_WORD(2);
@@ -77,40 +79,45 @@ __kernel void verifySeed(__global ulong *output, ulong O, ulong H, ulong L,
   }
   ulong mnemonic_long[16] = {0};
   uchar_to_ulong(seedString, offset, mnemonic_long, 0);
+  uchar checksum = sha256_from_byte(memHigh, memLow) >> 4UL;
+  seedNum[7] = (memLow & (2047UL << 40UL)) >> 40UL;
+  seedNum[8] = (memLow & (2047UL << 29UL)) >> 29UL;
+  seedNum[9] = (memLow & (2047UL << 18UL)) >> 18UL;
+  seedNum[10] = (memLow & (2047UL << 7UL)) >> 7UL;
+  seedNum[11] = ((memLow << 57UL) >> 53UL) | checksum;
 
-  for (; memLow < finalMem; memLow++) {
-    uchar checksum = sha256_from_byte(memHigh, memLow) >> 4UL;
-    seedNum[7] = (memLow & (2047UL << 40UL)) >> 40UL;
-    seedNum[8] = (memLow & (2047UL << 29UL)) >> 29UL;
-    seedNum[9] = (memLow & (2047UL << 18UL)) >> 18UL;
-    seedNum[10] = (memLow & (2047UL << 7UL)) >> 7UL;
-    seedNum[11] = ((memLow << 57UL) >> 53UL) | checksum;
+  CONCAT_WORD(7);
+  CONCAT_WORD(8);
+  CONCAT_WORD(9);
+  CONCAT_WORD(10);
+  CONCAT_WORD(11);
 
-    CONCAT_WORD(7);
-    CONCAT_WORD(8);
-    CONCAT_WORD(9);
-    CONCAT_WORD(10);
-    CONCAT_WORD(11);
-
-    seedString[offset - 1] = '\0';
+  seedString[offset - 1] = '\0';
 
 #pragma unroll
-    for (int i = fixBlock; i < 16; i++) {
-      CONCAT_BLOCK(i);
-    }
-
-    ulong pbkdf2_long[8] = {0};
-    uchar result[128] = {0};
-    uchar_to_ulong(seedString, offset - 1, mnemonic_long, fixBlock);
-    ////////////////////////
-
-    pbkdf2_hmac_sha512_long(mnemonic_long, offset - 1, pbkdf2_long);
-
-    if (memLow % 10000000 == 0) {
-      ulong_array_to_char(pbkdf2_long, 8, result);
-      printf("\nSeed: |%s|%s|\n", seedString, result);
-    }
-
-    offset = oldOffset;
+  for (int i = fixBlock; i < 16; i++) {
+    CONCAT_BLOCK(i);
   }
+
+  ulong pbkdf2_long[10] = {0};
+  uchar result[128] = {0};
+  uchar_to_ulong(seedString, offset - 1, mnemonic_long, fixBlock);
+  pbkdf2_hmac_sha512_long(mnemonic_long, offset - 1, pbkdf2_long);
+
+  ulong index = memLow - firstMem;
+  if(index%10000000==0) {
+    printf("%s|%016llx|%016llx|%llx|%llx|\n", seedString,pbkdf2_long[0],pbkdf2_long[7],memLow,memHigh);
+
+  }
+  output[index] = pbkdf2_long[0];
+  output[index + 1] = pbkdf2_long[1];
+  output[index + 2] = pbkdf2_long[2];
+  output[index + 3] = pbkdf2_long[3];
+  output[index + 4] = pbkdf2_long[4];
+  output[index + 5] = pbkdf2_long[5];
+  output[index + 6] = pbkdf2_long[6];
+  output[index + 7] = pbkdf2_long[7];
+  output[index + 8] = memLow;
+  output[index + 9] = memHigh;
+  offset = oldOffset;
 }

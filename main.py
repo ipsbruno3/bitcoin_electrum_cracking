@@ -1,82 +1,87 @@
+import time
 import numpy as np
 import pyopencl as cl
 from mnemonic import Mnemonic
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import struct
 import os
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 
+
 mnemo = Mnemonic("english")
-
-
-
-platforms = cl.get_platforms()
-print(platforms)
-devices = platforms[0].get_devices()
-print(devices)
-device = devices[0]
-max_work_item_sizes = device.max_work_item_sizes 
-max_work_group_size = device.max_work_group_size
-
-print(f"Device Name: {device.name}")
-print(f"Max Work Item Sizes: {max_work_item_sizes}")
-print(f"Max Work Group Size: {max_work_group_size}")
-
 
 FIXED_WORDS = "actual action amused black abandon adjust winter abandon abandon abandon abandon abandon".split()
 DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
 FIXED_SEED = "actual action amused black abandon adjust winter "
 
-OFFSET = 0
-LOCAL_WORKERS = (64,)
-WORKERS = (512000, )
-BATCH_SIZE = 100
+global_workers = 24_000_000
+repeater_workers = 1_000_000
+local_workers = 24
+
+tw = (global_workers,)
+tt = (local_workers,)
+
+print(f"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}")
+
+# Função para imprimir as informações do dispositivo
+def print_device_info(device):
+    print(f"Device Name: {device.name.strip()}")
+    print(f"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}")
+    print(f"OpenCL Version: {device.version.strip()}")
+    print(f"Driver Version: {device.driver_version.strip()}")
+    print(f"Max Compute Units: {device.max_compute_units}")
+    print(f"Max Work Group Size: {device.max_work_group_size}")
+    print(f"Max Work Item Dimensions: {device.max_work_item_dimensions}")
+    print(f"Max Work Item Sizes: {device.max_work_item_sizes}")
+    print(f"Global Memory Size: {device.global_mem_size / (1024 ** 2):.2f} MB")
+    print(f"Local Memory Size: {device.local_mem_size / 1024:.2f} KB")
+    print(f"Max Clock Frequency: {device.max_clock_frequency} MHz")
+    print(f"Address Bits: {device.address_bits}")
+    print(f"Available: {'Yes' if device.available else 'No'}")
+
+def run_kernel(program, queue):
+    context = program.context
+    kernel = program.verify
+    elements = global_workers * 10
+    bytes = elements * 8
+    
+    
+    
+    inicio = time.perf_counter()
+    high, low = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
+    high_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([high], dtype=np.uint64))
+    low_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([low], dtype=np.uint64))
+    output_buf = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, bytes)
+    kernel.set_args(high_buf, low_buf, output_buf)
+
+    cl.enqueue_nd_range_kernel(queue, kernel, tw,tt).wait()
 
 
-
-def main(): 
-    context, queue = initialize_opencl()
-    if context is None or queue is None: 
-        print("Erro ao inicializar o OpenCL. Verifique sua instalação ou configuração.")
-        return
-    print("OpenCL inicializado com sucesso.")
-
-    try:
-        program = build_program(context,
-                                "./kernel/common.cl",
-                                 "./kernel/sha256.cl",
-                                 "./kernel/sha512_hmac.cl",
-                                "./kernel/main.cl"
-             )
-
-        run_kernel(program, queue)
-        print("Kernel executado com sucesso.")
-    except Exception as e:
-        print(f"Erro ao compilar o programa OpenCL: {e}")
-        return
+    result = np.empty(elements, dtype=np.uint64)  # Adjust the result array 
+    cl.enqueue_copy(queue, result, output_buf).wait()
+    
+    resultado = global_workers / (time.perf_counter() - inicio)
+    print(f"Tempo de execução: {resultado:.2f} por seguno")
 
 
+def carregar_wallets():
+    memoria = {}
+    print("Carregando endereços Bitcoin na Memória")
+    with open("wallets.tsv", "r") as arquivo:
+        for linha in arquivo:
+            linha = linha.strip()
+            if linha:
+                try:
+                    addr, saldo = linha.split()
+                    memoria[addr] = float(saldo)
+                except ValueError:
+                    continue
 
-def load_program_source(filename):
-    with open(filename, 'r') as f:
-     content = f.read()
-    return content
-
-
-
-        
-def initialize_opencl():
-    try:
-        context = cl.Context([device])
-        queue = cl.CommandQueue(context)
-        return context, queue
-    except Exception as e:
-        print(f"Erro ao inicializar o OpenCL: {e}")
-        return None, None
-
-
-
+    addr_busca = "0x1234abcd"
+    if addr_busca in memoria:
+        print(f"Saldo de {addr_busca}: {memoria[addr_busca]}")
+    else:
+        print(f"Endereço {addr_busca} não encontrado.")
 
 
 def build_program(context, *filenames):
@@ -84,9 +89,6 @@ def build_program(context, *filenames):
     for filename in filenames:
         source_code += load_program_source(filename) + "\n\n\n"
     return cl.Program(context, source_code).build()
-
-
-
 
 
 def words_to_indices(words):
@@ -97,42 +99,54 @@ def words_to_indices(words):
     return np.array(indices, dtype=np.int32)
 
 
-
-def string_to_long_array(s):
-    s = s.ljust((len(s) + 7) // 8 * 8)
-    long_array = [str(struct.unpack('<Q', s[i:i+8].encode('utf-8'))[0]) for i in range(0, len(s), 8)]
-    return '{' + ', '.join(long_array) + '}'
-
-
-def string_to_long_array(s):
-    s = s.ljust((len(s) + 7) // 8 * 8)
-    return [struct.unpack('<Q', s[i:i+8].encode('utf-8'))[0] for i in range(0, len(s), 8)]
-
 def mnemonic_to_uint64_pair(indices):
-    binary_string = ''.join(f"{index:011b}" for index in indices)[:-4] 
+    binary_string = ''.join(f"{index:011b}" for index in indices)[:-4]
     binary_string = binary_string.ljust(128, '0')
-    high = int(binary_string[:64], 2)
-    low = int(binary_string[64:], 2)
+    low = int(binary_string[:64], 2)
+    high = int(binary_string[64:], 2)
     return high, low
 
 
-def run_kernel(program, queue):
-    data = np.arange(11, dtype=np.int64)
-    context = program.context
-    kernel = program.verifySeed
-    HIGH, LOW = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
-    output_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, size=data.nbytes)
-    kernel.set_args(output_buffer, np.uint64(OFFSET), np.uint64(HIGH), np.uint64(LOW), np.uint64(BATCH_SIZE))
-    start_time = time.time()   
-    cl.enqueue_nd_range_kernel(queue, kernel, WORKERS, LOCAL_WORKERS).wait()
-    end_time = time.time()
-    elapsed_time = end_time - start_time +1
-    seeds = WORKERS[0] * BATCH_SIZE
+def uint64_pair_to_mnemonic(high, low):
+    binary_string = f"{high:064b}{low:064b}"
+    indices = [int(binary_string[i:i+11], 2)
+               for i in range(0, len(binary_string), 11)]
+    words = [mnemo.wordlist[index]
+             for index in indices if index < len(mnemo.wordlist)]
+    seed = ' '.join(words)
+    return seed
 
-    media = seeds / elapsed_time
-    print(f"Foram criadas {seeds:,} em {elapsed_time:.6f} seconds media {media:,} por seg")
-    return True
+
+def main():
+    try:
+        platforms = cl.get_platforms()
+        devices = platforms[0].get_devices()
+        device = devices[0]
+        print_device_info(device)
+        context = cl.Context([device])
+        queue = cl.CommandQueue(context)
+        print(f"Dispositivo: {device.name}")
+        program = build_program(context,
+                                "./kernel/common.cl",
+                                "./kernel/sha256.cl",
+                                "./kernel/sha512_hmac.cl",
+                                "./kernel/main.cl"
+                                )
+
+        run_kernel(program, queue)
+
+        print("Kernel executado com sucesso.")
+    except Exception as e:
+        print(f"Erro ao compilar o programa OpenCL 1: {e}")
+    return
+
+
+def load_program_source(filename):
+    with open(filename, 'r') as f:
+        content = f.read()
+    return content
 
 
 if __name__ == "__main__":
+    #carregar_wallets()
     main()
