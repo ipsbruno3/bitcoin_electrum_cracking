@@ -42,12 +42,15 @@ __kernel void verify(__global ulong *L, __global ulong *H,
   uchar mnemonicString[128]; 
   uchar offset = 0;         
   uint seedNum[12];
-
+__local ulong outer_data[32];
+if (lid < 32) {
+    outer_data[lid] = 0x5C5C5C5C5C5C5C5CUL;
+}
+barrier(CLK_LOCAL_MEM_FENCE);
   prepareSeedNumber(seedNum, memHigh, memLow);
-  prepareSeedString(seedNum, mnemonicString,
-                    &offset); // Removed & from mnemonicString
+  prepareSeedString(seedNum, mnemonicString, &offset);
   uchar_to_ulong(mnemonicString, offset - 1, mnemonicLong, 0);
-  pbkdf2_hmac_sha512_long(mnemonicLong, offset - 1, pbkdLong);
+  pbkdf2_hmac_sha512_long(mnemonicLong, offset - 1, pbkdLong,outer_data);
 
   ulong index = memLow - firstMem;
 
@@ -76,7 +79,7 @@ __kernel void pbkdf2_hmac_sha512_test(__global uchar *py,
   ulong aa[8];
   uchar result[128];
   uchar_to_ulong(input, strlen(input), mnemonic_long, 0);
-  pbkdf2_hmac_sha512_long(mnemonic_long, strlen(input), aa);
+  //pbkdf2_hmac_sha512_long(mnemonic_long, strlen(input), aa);
   ulong_array_to_char(aa, 8, result);
 
   if (strcmp(result, py)) {

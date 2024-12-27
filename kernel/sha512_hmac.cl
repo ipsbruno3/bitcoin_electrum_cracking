@@ -202,12 +202,14 @@ void sha512_procces(ulong *message, ulong *H) {
 }
 
 void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
+  INIT_SHA512(H);
   sha512_procces(message, H);
   sha512_procces(message + 16, H);
 }
 
-void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
-  INIT_SHA512(T);
+void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T,
+                             ulong *outer_data) {
+
   ulong inner_data[32] = {0x3636363636363636UL,
                           0x3636363636363636UL,
                           0x3636363636363636UL,
@@ -240,8 +242,7 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
                           0,
                           0,
                           1120UL};
-
-  ulong outer_data[40] = {0x5C5C5C5C5C5C5C5CUL,
+/*ulong outer_data[40] = {0x5C5C5C5C5C5C5C5CUL,
                           0x5C5C5C5C5C5C5C5CUL,
                           0x5C5C5C5C5C5C5C5CUL,
                           0x5C5C5C5C5C5C5C5CUL,
@@ -280,18 +281,21 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
                           0x510e527fade682d1UL,
                           0x9b05688c2b3e6c1fUL,
                           0x1f83d9abfb41bd6bUL,
-                          0x5be0cd19137e2179UL};
-
+                          0x5be0cd19137e2179UL};*/
+  outer_data[24] = 0x8000000000000000UL;
+  outer_data[31] = 1536UL;
   uchar key_ulongs = ((password_len + 7) / 8);
 #pragma unroll 16
   for (uchar i = 0; i <= key_ulongs; ++i) {
     inner_data[i] = password[i] ^ 0x3636363636363636UL;
     outer_data[i] = password[i] ^ 0x5C5C5C5C5C5C5C5CUL;
   }
-  sha512_hash_two_blocks_message(inner_data, outer_data + 32);
-  COPY_EIGHT(outer_data + 16, outer_data + 32);
-  sha512_hash_two_blocks_message(outer_data, T);
   ulong U[8];
+INIT_SHA512(U);
+  sha512_hash_two_blocks_message(inner_data, U);
+  COPY_EIGHT(outer_data + 16, u);
+  sha512_hash_two_blocks_message(outer_data, T);
+
   COPY_EIGHT(U, T);
   inner_data[24] = 0x8000000000000000UL;
   inner_data[31] = 1536UL;
@@ -301,10 +305,10 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
 
   for (ushort i = 1; i < 2048; ++i) {
     COPY_EIGHT(inner_data + 16, U);
-    INIT_SHA512(U);
+    
     sha512_hash_two_blocks_message(inner_data, U);
     COPY_EIGHT(outer_data + 16, U);
-    INIT_SHA512(U);
+    ;
     sha512_hash_two_blocks_message(outer_data, U);
     *(ulong8 *)(T) ^= *(ulong8 *)(U);
   }
