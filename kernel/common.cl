@@ -23,16 +23,8 @@ inline bool strcmp(uchar *str1, uchar *str2) {
   }
   return (str1[i] == str2[i]) ? 1 : 0;
 }
-void uchar_to_ulong2(const char *input, int length, ulong *output, int offset) {
-  for (int i = 0; i < length / 8; i++) {
-    // Combinar 8 caracteres consecutivos em um ulong
-    output[i + offset] = 0;
-    for (int j = 0; j < 8; j++) {
-      output[i + offset] |= (ulong)(unsigned char)input[i * 8 + j]
-                            << (56 - j * 8);
-    }
-  }
-}
+
+
 inline void uchar_to_ulong(const uchar *input, uint input_len, ulong *output,
                            const uchar offset) {
   const uchar num_ulongs = (input_len + 7) / 8;
@@ -61,6 +53,8 @@ inline void ulong_array_to_char(const ulong *input, uint input_len,
   }
   *output = '\0';
 }
+
+
 void ulong_to_char_buffer(const ulong *ulong_array, int count, uchar *output) {
   int offset = 0;
 
@@ -72,9 +66,9 @@ void ulong_to_char_buffer(const ulong *ulong_array, int count, uchar *output) {
       }
     }
   }
-
   output[offset - 1] = '\0';
 }
+
 
 void *memcpy(void *dest, const void *src, size_t n) {
   char *d = (char *)dest;

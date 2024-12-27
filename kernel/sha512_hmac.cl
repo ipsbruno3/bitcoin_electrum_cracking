@@ -1,4 +1,3 @@
-
 #define INIT_SHA512(a)                                                         \
   (a)[0] = 0x6a09e667f3bcc908UL;                                               \
   (a)[1] = 0xbb67ae8584caa73bUL;                                               \
@@ -9,134 +8,206 @@
   (a)[6] = 0x1f83d9abfb41bd6bUL;                                               \
   (a)[7] = 0x5be0cd19137e2179UL;
 
-__constant static const ulong K512[80] = {
-    0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f,
-    0xe9b5dba58189dbbc, 0x3956c25bf348b538, 0x59f111f1b605d019,
-    0x923f82a4af194f9b, 0xab1c5ed5da6d8118, 0xd807aa98a3030242,
-    0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
-    0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235,
-    0xc19bf174cf692694, 0xe49b69c19ef14ad2, 0xefbe4786384f25e3,
-    0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65, 0x2de92c6f592b0275,
-    0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5,
-    0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f,
-    0xbf597fc7beef0ee4, 0xc6e00bf33da88fc2, 0xd5a79147930aa725,
-    0x06ca6351e003826f, 0x142929670a0e6e70, 0x27b70a8546d22ffc,
-    0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df,
-    0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6,
-    0x92722c851482353b, 0xa2bfe8a14cf10364, 0xa81a664bbc423001,
-    0xc24b8b70d0f89791, 0xc76c51a30654be30, 0xd192e819d6ef5218,
-    0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8,
-    0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99,
-    0x34b0bcb5e19b48a8, 0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb,
-    0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3, 0x748f82ee5defb2fc,
-    0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
-    0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915,
-    0xc67178f2e372532b, 0xca273eceea26619c, 0xd186b8c721c0c207,
-    0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178, 0x06f067aa72176fba,
-    0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b,
-    0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc,
-    0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a,
-    0x5fcb6fab3ad6faec, 0x6c44198c4a475817};
-
-#define ROTATE_RIGHT(x, n) ((x >> n) | (x << (64UL - n)))
-#define ROTATE(x, y) (((x) >> (y)) | ((x) << (64 - (y))))
-
 #define F1(x, y, z) (bitselect(z, y, x))
 #define F0(x, y, z) (bitselect(x, y, ((x) ^ (z))))
-
-#define rotl64(a, n) (rotate((a), (n)))
 #define rotr64(a, n) (rotate((a), (64ul - n)))
+
+inline ulong L0(ulong x) {
+  return rotr64(x, 1ul) ^ rotr64(x, 8ul) ^ (x >> 7ul);
+}
+
+inline ulong L1(ulong x) {
+  return rotr64(x, 19ul) ^ rotr64(x, 61ul) ^ (x >> 6ul);
+}
 
 #define SHA512_S0(x) (rotr64(x, 28ul) ^ rotr64(x, 34ul) ^ rotr64(x, 39ul))
 #define SHA512_S1(x) (rotr64(x, 14ul) ^ rotr64(x, 18ul) ^ rotr64(x, 41ul))
 
-inline ulong little_s0(ulong x) {
-  return rotr64(x, 1ul) ^ rotr64(x, 8ul) ^ (x >> 7ul);
-}
+#define COPY_EIGHT(dst, src) *(ulong8 *)(dst) = *(ulong8 *)(src)
+#define COPY_DOUBLE_EIGHT(dst, src) *(ulong16 *)(dst) = *(ulong16 *)(src)
 
-inline ulong little_s1(ulong x) {
-  return rotr64(x, 19ul) ^ rotr64(x, 61ul) ^ (x >> 6ul);
-}
-
-#define SHA512_STEP(a, b, c, d, e, f, g, h, x, K)                              \
+#define RoR(a, b, c, d, e, f, g, h, x, K)                                      \
   {                                                                            \
     h += K + SHA512_S1(e) + F1(e, f, g) + x;                                   \
     d += h;                                                                    \
     h += SHA512_S0(a) + F0(a, b, c);                                           \
   }
-#define ROUND_STEP_SHA512(i)                                                   \
-  {                                                                            \
-    SHA512_STEP(a, b, c, d, e, f, g, h, W[i + 0], K512[i + 0]);                \
-    SHA512_STEP(h, a, b, c, d, e, f, g, W[i + 1], K512[i + 1]);                \
-    SHA512_STEP(g, h, a, b, c, d, e, f, W[i + 2], K512[i + 2]);                \
-    SHA512_STEP(f, g, h, a, b, c, d, e, W[i + 3], K512[i + 3]);                \
-    SHA512_STEP(e, f, g, h, a, b, c, d, W[i + 4], K512[i + 4]);                \
-    SHA512_STEP(d, e, f, g, h, a, b, c, W[i + 5], K512[i + 5]);                \
-    SHA512_STEP(c, d, e, f, g, h, a, b, W[i + 6], K512[i + 6]);                \
-    SHA512_STEP(b, c, d, e, f, g, h, a, W[i + 7], K512[i + 7]);                \
-    SHA512_STEP(a, b, c, d, e, f, g, h, W[i + 8], K512[i + 8]);                \
-    SHA512_STEP(h, a, b, c, d, e, f, g, W[i + 9], K512[i + 9]);                \
-    SHA512_STEP(g, h, a, b, c, d, e, f, W[i + 10], K512[i + 10]);              \
-    SHA512_STEP(f, g, h, a, b, c, d, e, W[i + 11], K512[i + 11]);              \
-    SHA512_STEP(e, f, g, h, a, b, c, d, W[i + 12], K512[i + 12]);              \
-    SHA512_STEP(d, e, f, g, h, a, b, c, W[i + 13], K512[i + 13]);              \
-    SHA512_STEP(c, d, e, f, g, h, a, b, W[i + 14], K512[i + 14]);              \
-    SHA512_STEP(b, c, d, e, f, g, h, a, W[i + 15], K512[i + 15]);              \
-  }
-#define COPY_EIGHT(dst, src) *(ulong8 *)(dst) = *(ulong8 *)(src)
-#define COPY_DOUBLE_EIGHT(dst, src) *(ulong16 *)(dst) = *(ulong16 *)(src)
-/**-
-#define COPY_EIGHT(dst, src)                                                   \
-  (dst)[0] = (src)[0];                                                         \
-  (dst)[1] = (src)[1];                                                         \
-  (dst)[2] = (src)[2];                                                         \
-  (dst)[3] = (src)[3];                                                         \
-  (dst)[4] = (src)[4];                                                         \
-  (dst)[5] = (src)[5];                                                         \
-  (dst)[6] = (src)[6];                                                         \
-  (dst)[7] = (src)[7];
- */
 
+void sha512_procces(ulong *message, ulong *H) {
+  __private ulong A0 = H[0], A1 = H[1], A2 = H[2], A3 = H[3], A4 = H[4],
+                  A5 = H[5], A6 = H[6], A7 = H[7];
 
-static inline void sha512_procces(ulong *message, ulong *H) {
+  __private const ulong W16 =
+      (message[0] + L0(message[1]) + message[9] + L1(message[14]));
+  __private const ulong W17 =
+      (message[1] + L0(message[2]) + message[10] + L1(message[15]));
+  __private const ulong W18 =
+      (message[2] + L0(message[3]) + message[11] + L1(W16));
+  __private const ulong W19 =
+      (message[3] + L0(message[4]) + message[12] + L1(W17));
+  __private const ulong W20 =
+      (message[4] + L0(message[5]) + message[13] + L1(W18));
+  __private const ulong W21 =
+      (message[5] + L0(message[6]) + message[14] + L1(W19));
+  __private const ulong W22 =
+      message[6] + L0(message[7]) + message[15] + L1(W20);
+  __private const ulong W23 = message[7] + L0(message[8]) + W16 + L1(W21);
+  __private const ulong W24 = message[8] + L0(message[9]) + W17 + L1(W22);
+  __private const ulong W25 = message[9] + L0(message[10]) + W18 + L1(W23);
+  __private const ulong W26 = message[10] + L0(message[11]) + W19 + L1(W24);
+  __private const ulong W27 = message[11] + L0(message[12]) + W20 + L1(W25);
+  __private const ulong W28 = message[12] + L0(message[13]) + W21 + L1(W26);
+  __private const ulong W29 = message[13] + L0(message[14]) + W22 + L1(W27);
+  __private const ulong W30 = message[14] + L0(message[15]) + W23 + L1(W28);
+  __private const ulong W31 = message[15] + L0(W16) + W24 + L1(W29);
 
-  ulong W[80];
-  ulong a, b, c, d, e, f, g, h, i;
-  ulong S0, S1, ch, maj, temp1, temp2, W_15, W_2;
+  __private const ulong W32 = W16 + L0(W17) + W25 + L1(W30);
+  __private const ulong W33 = W17 + L0(W18) + W26 + L1(W31);
+  __private const ulong W34 = W18 + L0(W19) + W27 + L1(W32);
+  __private const ulong W35 = W19 + L0(W20) + W28 + L1(W33);
+  __private const ulong W36 = W20 + L0(W21) + W29 + L1(W34);
+  __private const ulong W37 = W21 + L0(W22) + W30 + L1(W35);
+  __private const ulong W38 = W22 + L0(W23) + W31 + L1(W36);
+  __private const ulong W39 = W23 + L0(W24) + W32 + L1(W37);
+  __private const ulong W40 = W24 + L0(W25) + W33 + L1(W38);
+  __private const ulong W41 = W25 + L0(W26) + W34 + L1(W39);
+  __private const ulong W42 = W26 + L0(W27) + W35 + L1(W40);
+  __private const ulong W43 = W27 + L0(W28) + W36 + L1(W41);
+  __private const ulong W44 = W28 + L0(W29) + W37 + L1(W42);
+  __private const ulong W45 = W29 + L0(W30) + W38 + L1(W43);
+  __private const ulong W46 = W30 + L0(W31) + W39 + L1(W44);
+  __private const ulong W47 = W31 + L0(W32) + W40 + L1(W45);
+  __private const ulong W48 = W32 + L0(W33) + W41 + L1(W46);
+  __private const ulong W49 = W33 + L0(W34) + W42 + L1(W47);
+  __private const ulong W50 = W34 + L0(W35) + W43 + L1(W48);
+  __private const ulong W51 = W35 + L0(W36) + W44 + L1(W49);
+  __private const ulong W52 = W36 + L0(W37) + W45 + L1(W50);
+  __private const ulong W53 = W37 + L0(W38) + W46 + L1(W51);
+  __private const ulong W54 = W38 + L0(W39) + W47 + L1(W52);
+  __private const ulong W55 = W39 + L0(W40) + W48 + L1(W53);
+  __private const ulong W56 = W40 + L0(W41) + W49 + L1(W54);
+  __private const ulong W57 = W41 + L0(W42) + W50 + L1(W55);
+  __private const ulong W58 = W42 + L0(W43) + W51 + L1(W56);
+  __private const ulong W59 = W43 + L0(W44) + W52 + L1(W57);
+  __private const ulong W60 = W44 + L0(W45) + W53 + L1(W58);
+  __private const ulong W61 = W45 + L0(W46) + W54 + L1(W59);
+  __private const ulong W62 = W46 + L0(W47) + W55 + L1(W60);
+  __private const ulong W63 = W47 + L0(W48) + W56 + L1(W61);
+  __private const ulong W64 = W48 + L0(W49) + W57 + L1(W62);
+  __private const ulong W65 = W49 + L0(W50) + W58 + L1(W63);
+  __private const ulong W66 = W50 + L0(W51) + W59 + L1(W64);
+  __private const ulong W67 = W51 + L0(W52) + W60 + L1(W65);
+  __private const ulong W68 = W52 + L0(W53) + W61 + L1(W66);
+  __private const ulong W69 = W53 + L0(W54) + W62 + L1(W67);
+  __private const ulong W70 = W54 + L0(W55) + W63 + L1(W68);
+  __private const ulong W71 = W55 + L0(W56) + W64 + L1(W69);
+  __private const ulong W72 = W56 + L0(W57) + W65 + L1(W70);
+  __private const ulong W73 = W57 + L0(W58) + W66 + L1(W71);
+  __private const ulong W74 = W58 + L0(W59) + W67 + L1(W72);
+  __private const ulong W75 = W59 + L0(W60) + W68 + L1(W73);
+  __private const ulong W76 = W60 + L0(W61) + W69 + L1(W74);
+  __private const ulong W77 = W61 + L0(W62) + W70 + L1(W75);
+  __private const ulong W78 = W62 + L0(W63) + W71 + L1(W76);
+  __private const ulong W79 = W63 + L0(W64) + W72 + L1(W77);
 
-  COPY_DOUBLE_EIGHT(W, message);
-#pragma unroll 64
-  for (int i = 16; i < 80; i++) {
-    W[i] = W[i - 16] + little_s0(W[i - 15]) + W[i - 7] + little_s1(W[i - 2]);
-  }
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, message[0], 0x428a2f98d728ae22);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, message[1], 0x7137449123ef65cd);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, message[2], 0xb5c0fbcfec4d3b2f);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, message[3], 0xe9b5dba58189dbbc);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, message[4], 0x3956c25bf348b538);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, message[5], 0x59f111f1b605d019);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, message[6], 0x923f82a4af194f9b);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, message[7], 0xab1c5ed5da6d8118);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, message[8], 0xd807aa98a3030242);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, message[9], 0x12835b0145706fbe);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, message[10], 0x243185be4ee4b28c);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, message[11], 0x550c7dc3d5ffb4e2);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, message[12], 0x72be5d74f27b896f);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, message[13], 0x80deb1fe3b1696b1);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, message[14], 0x9bdc06a725c71235);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, message[15], 0xc19bf174cf692694);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W16, 0xe49b69c19ef14ad2);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W17, 0xefbe4786384f25e3);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W18, 0xfc19dc68b8cd5b5);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W19, 0x240ca1cc77ac9c65);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W20, 0x2de92c6f592b0275);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W21, 0x4a7484aa6ea6e483);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W22, 0x5cb0a9dcbd41fbd4);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W23, 0x76f988da831153b5);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W24, 0x983e5152ee66dfab);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W25, 0xa831c66d2db43210);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W26, 0xb00327c898fb213f);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W27, 0xbf597fc7beef0ee4);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W28, 0xc6e00bf33da88fc2);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W29, 0xd5a79147930aa725);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W30, 0x6ca6351e003826f);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W31, 0x142929670a0e6e70);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W32, 0x27b70a8546d22ffc);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W33, 0x2e1b21385c26c926);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W34, 0x4d2c6dfc5ac42aed);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W35, 0x53380d139d95b3df);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W36, 0x650a73548baf63de);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W37, 0x766a0abb3c77b2a8);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W38, 0x81c2c92e47edaee6);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W39, 0x92722c851482353b);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W40, 0xa2bfe8a14cf10364);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W41, 0xa81a664bbc423001);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W42, 0xc24b8b70d0f89791);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W43, 0xc76c51a30654be30);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W44, 0xd192e819d6ef5218);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W45, 0xd69906245565a910);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W46, 0xf40e35855771202a);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W47, 0x106aa07032bbd1b8);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W48, 0x19a4c116b8d2d0c8);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W49, 0x1e376c085141ab53);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W50, 0x2748774cdf8eeb99);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W51, 0x34b0bcb5e19b48a8);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W52, 0x391c0cb3c5c95a63);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W53, 0x4ed8aa4ae3418acb);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W54, 0x5b9cca4f7763e373);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W55, 0x682e6ff3d6b2b8a3);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W56, 0x748f82ee5defb2fc);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W57, 0x78a5636f43172f60);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W58, 0x84c87814a1f0ab72);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W59, 0x8cc702081a6439ec);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W60, 0x90befffa23631e28);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W61, 0xa4506cebde82bde9);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W62, 0xbef9a3f7b2c67915);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W63, 0xc67178f2e372532b);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W64, 0xca273eceea26619c);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W65, 0xd186b8c721c0c207);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W66, 0xeada7dd6cde0eb1e);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W67, 0xf57d4f7fee6ed178);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W68, 0x6f067aa72176fba);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W69, 0xa637dc5a2c898a6);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W70, 0x113f9804bef90dae);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W71, 0x1b710b35131c471b);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W72, 0x28db77f523047d84);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W73, 0x32caab7b40c72493);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W74, 0x3c9ebe0a15c9bebc);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W75, 0x431d67c49c100d4c);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W76, 0x4cc5d4becb3e42b6);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W77, 0x597f299cfc657e2a);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W78, 0x5fcb6fab3ad6faec);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W79, 0x6c44198c4a475817);
 
-  a = H[0];
-  b = H[1];
-  c = H[2];
-  d = H[3];
-  e = H[4];
-  f = H[5];
-  g = H[6];
-  h = H[7];
-
-  ROUND_STEP_SHA512(0);
-  ROUND_STEP_SHA512(16);
-  ROUND_STEP_SHA512(32);
-  ROUND_STEP_SHA512(48);
-  ROUND_STEP_SHA512(64);
-
-  H[0] += a, H[1] += b, H[2] += c, H[3] += d, H[4] += e, H[5] += f, H[6] += g,
-      H[7] += h;
+  H[0] += A0;
+  H[1] += A1;
+  H[2] += A2;
+  H[3] += A3;
+  H[4] += A4;
+  H[5] += A5;
+  H[6] += A6;
+  H[7] += A7;
 }
 
-static inline void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
+void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
   sha512_procces(message, H);
   sha512_procces(message + 16, H);
 }
 
 void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
   INIT_SHA512(T);
-
   ulong inner_data[32] = {0x3636363636363636UL,
                           0x3636363636363636UL,
                           0x3636363636363636UL,
