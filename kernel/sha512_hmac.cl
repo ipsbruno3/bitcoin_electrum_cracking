@@ -24,8 +24,11 @@ inline ulong L1(ulong x) {
 #define SHA512_S0(x) (rotr64(x, 28ul) ^ rotr64(x, 34ul) ^ rotr64(x, 39ul))
 #define SHA512_S1(x) (rotr64(x, 14ul) ^ rotr64(x, 18ul) ^ rotr64(x, 41ul))
 
-#define COPY_EIGHT(dst, src) *(ulong8 *)(dst) = *(ulong8 *)(src)
-#define COPY_DOUBLE_EIGHT(dst, src) *(ulong16 *)(dst) = *(ulong16 *)(src)
+
+#define COPY_EIGHT(a, b)                                                       \
+  (a)[0] = (b)[0], (a)[1] = (b)[1], (a)[2] = (b)[2], (a)[3] = (b)[3],          \
+  (a)[4] = (b)[4], (a)[5] = (b)[5], (a)[6] = (b)[6], (a)[7] = (b)[7];
+
 
 #define RoR(a, b, c, d, e, f, g, h, x, K)                                      \
   {                                                                            \
@@ -34,7 +37,8 @@ inline ulong L1(ulong x) {
     h += SHA512_S0(a) + F0(a, b, c);                                           \
   }
 
-void sha512_procces(ulong *message, ulong *H) {
+void sha512_procces(ulong *message, ulong *H,__local ulong * pk) {
+INIT_SHA512(H);
   __private ulong A0 = H[0], A1 = H[1], A2 = H[2], A3 = H[3], A4 = H[4],
                   A5 = H[5], A6 = H[6], A7 = H[7];
 
@@ -110,6 +114,7 @@ void sha512_procces(ulong *message, ulong *H) {
   __private const ulong W77 = W61 + L0(W62) + W70 + L1(W75);
   __private const ulong W78 = W62 + L0(W63) + W71 + L1(W76);
   __private const ulong W79 = W63 + L0(W64) + W72 + L1(W77);
+
 
   RoR(A0, A1, A2, A3, A4, A5, A6, A7, message[0], 0x428a2f98d728ae22);
   RoR(A7, A0, A1, A2, A3, A4, A5, A6, message[1], 0x7137449123ef65cd);
@@ -200,15 +205,18 @@ void sha512_procces(ulong *message, ulong *H) {
   H[5] += A5;
   H[6] += A6;
   H[7] += A7;
+  
+  //printf("0x%llu -> 0x%llu -> %d\n", H[0], message[0], pk);
 }
 
-void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
+void sha512_hash_two_blocks_message(ulong *message, ucha *msg, ulong *H, __local ulong * pk) {
   INIT_SHA512(H);
-  sha512_procces(message, H);
-  sha512_procces(message + 16, H);
+  sha512_procces(message, H,pk);
+  sha512_procces(message + 16, H, pk);
 }
 
-void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
+void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T,
+  __local ulong * pk) {
   ulong U[8];
   ulong inner_data[32] = {0x3636363636363636UL,
                           0x3636363636363636UL,
@@ -279,13 +287,13 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
   uchar key_ulongs = (password_len + 7) / 8;
 #pragma unroll 32
   for (uchar i = 0; i <= key_ulongs; ++i) {
-    inner_data[i] = password[i] ^ 0x3636363636363636UL;
-    outer_data[i] = password[i] ^ 0x5C5C5C5C5C5C5C5CUL;
+    inner_data[i] = password[i]^0x3636363636363636UL;
+    outer_data[i] = password[i]^0x5C5C5C5C5C5C5C5CUL;
   }
-  sha512_hash_two_blocks_message(inner_data, U);
+  sha512_hash_two_blocks_message(inner_data, U, pk);
   COPY_EIGHT(outer_data + 16, U);
-  sha512_hash_two_blocks_message(outer_data, T);
-  
+  sha512_hash_two_blocks_message(outer_data, T, pk);
+
   COPY_EIGHT(U, T);
   inner_data[24] = 0x8000000000000000UL;
   inner_data[31] = 1536UL;
@@ -295,9 +303,10 @@ void pbkdf2_hmac_sha512_long(ulong *password, uchar password_len, ulong *T) {
 
   for (ushort i = 1; i < 2048; ++i) {
     COPY_EIGHT(inner_data + 16, U);
-    sha512_hash_two_blocks_message(inner_data, U);
+    sha512_hash_two_blocks_message(inner_data, U, pk);
     COPY_EIGHT(outer_data + 16, U);
-    sha512_hash_two_blocks_message(outer_data, U);
-    *(ulong8 *)(T) ^= *(ulong8 *)(U);
+    sha512_hash_two_blocks_message(outer_data, U, pk);
+    T[0] ^= U[0], T[1] ^= U[1], T[2] ^= U[2], T[3] ^= U[3];
+    T[4] ^= U[4], T[5] ^= U[5], T[6] ^= U[6], T[7] ^= U[7];
   }
 }

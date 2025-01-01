@@ -1,4 +1,5 @@
-#include "../kernel/bip39.cl"
+#include "./kernel/bip39.cl"
+#include "./kernel/ec.cl"
 
 inline void prepareSeedString(uint *seedNum, uchar *seedString, uchar *offset) {
 #pragma unroll 12
@@ -15,7 +16,7 @@ inline void prepareSeedString(uint *seedNum, uchar *seedString, uchar *offset) {
 
 inline void prepareSeedNumber(uint *seedNum, ulong memHigh, ulong memLow) {
 
-  uchar checksum = sha256_from_byte(memHigh, memLow) >> 4UL;
+  uchar checksum = 0; // sha256_from_byte(memHigh, memLow) >> 4UL;
   seedNum[0] = (memHigh & (2047UL << 53UL)) >> 53UL,
   seedNum[1] = (memHigh & (2047UL << 42UL)) >> 42UL,
   seedNum[2] = (memHigh & (2047UL << 31UL)) >> 31UL,
@@ -37,23 +38,29 @@ __kernel void verify(__global ulong *L, __global ulong *H,
   ulong memHigh = H[0];
   ulong firstMem = L[0];
   ulong memLow = firstMem + gid;
-  ulong mnemonicLong[16], pbkdLong[10];
-  uchar mnemonicString[128]; 
-  uchar offset = 0;         
+  ulong mnemonicLong[32], pbkdLong[10];
+  uchar mnemonicString[128];
+  uchar offset = 0;
   uint seedNum[12];
 
   prepareSeedNumber(seedNum, memHigh, memLow);
-  prepareSeedString(seedNum, mnemonicString,
-                    &offset); // Removed & from mnemonicString
-  uchar_to_ulong(mnemonicString, offset - 1, mnemonicLong, 0);
-  pbkdf2_hmac_sha512_long(mnemonicLong, offset - 1, pbkdLong);
+  prepareSeedString(seedNum, mnemonicString, &offset);
 
+  uchar_to_ulong(mnemonicString, offset - 1, mnemonicLong, 0);
   ulong index = memLow - firstMem;
 
-  if (index % 10000000 == 0) {
-    printf("%s|%016llx|%016llx|%llx|%llx|\n", mnemonicString, pbkdLong[0],
-           pbkdLong[7], memLow, memHigh);
+  __local ulong pk; pk  = get_local_id(0);
+  pbkdf2_hmac_sha512_long(mnemonicLong,mnemonicString, offset - 1, pbkdLong, &pk);
+  if (index % 5000000 == 0) {
+    printf("%s|%016llx\n", mnemonicString, pbkdLong[0]);
   }
+  uint first32Bytes[4];
+  first32Bytes[0] = (int)mnemonicLong[0];
+  first32Bytes[1] = (int)mnemonicLong[1];
+  first32Bytes[3] = (int)mnemonicLong[3];
+  uint x[8];
+  uint y[8];
+  point_mul_xy(x, y, first32Bytes);
 
   output[index] = pbkdLong[0];
   output[index + 1] = pbkdLong[1];
@@ -66,16 +73,16 @@ __kernel void verify(__global ulong *L, __global ulong *H,
   output[index + 8] = memLow;
   output[index + 9] = memHigh;
 }
-
+/*
 __kernel void pbkdf2_hmac_sha512_test(__global uchar *py,
-                                      __global uchar *input) {
+                                  __global uchar *input) {
 
   ulong mnemonic_long[32];
 
   ulong aa[8];
   uchar result[128];
   uchar_to_ulong(input, strlen(input), mnemonic_long, 0);
-  pbkdf2_hmac_sha512_long(mnemonic_long, strlen(input), aa);
+  pbkdf2_hmac_sha512_long(mnemonic_long, strlen(input), &aa);
   ulong_array_to_char(aa, 8, result);
 
   if (strcmp(result, py)) {
@@ -84,4 +91,4 @@ __kernel void pbkdf2_hmac_sha512_test(__global uchar *py,
     printf("\nDiferentes: ");
     printf("Veio de la: %s %s %s", input, result, py);
   }
-}
+}*/
