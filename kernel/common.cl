@@ -36,8 +36,7 @@ inline void uchar_to_ulong(const uchar *input, uint input_len, ulong *output,
                 ((ulong)input[baseIndex + 3] << 32UL) |
                 ((ulong)input[baseIndex + 4] << 24UL) |
                 ((ulong)input[baseIndex + 5] << 16UL) |
-                ((ulong)input[baseIndex + 6] 
-                << 8UL) |
+                ((ulong)input[baseIndex + 6] << 8UL) |
                 ((ulong)input[baseIndex + 7]);
   }
 }

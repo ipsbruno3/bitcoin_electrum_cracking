@@ -60,6 +60,15 @@
         "documentation": {}
     },
     {
+        "label": "info",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def info():\n        print('\\n' + '=' * 60 + '\\nOpenCL Platforms and Devices')\n        for i,platformNum in enumerate(cl.get_platforms()):\n            print('=' * 60)\n            print('Platform %d - Name: ' %i + platformNum.name)\n            print('Platform %d - Vendor: ' %i + platformNum.vendor)\n            print('Platform %d - Version: ' %i + platformNum.version)\n            print('Platform %d - Profile: ' %i + platformNum.profile)\n            for device in platformNum.get_devices():\n                print(' ' + '-' * 56)",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
         "label": "print_device_info",
         "kind": 2,
         "importPath": "main",
@@ -73,7 +82,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def run_kernel(program, queue):\n    context = program.context\n    kernel = program.verify\n    elements = global_workers * 10\n    bytes = elements * 8\n    high, low = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))\n    high_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([high], dtype=np.uint64))\n    low_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([low], dtype=np.uint64))\n    output_buf = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, bytes)\n    kernel.set_args(high_buf, low_buf, output_buf)",
+        "peekOfCode": "def run_kernel(program, queue):\n    context = program.context\n    kernel = program.verify\n    elements = global_workers * 10\n    bytes = elements * 8\n    inicio = time.perf_counter()\n    high, low = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))\n    high_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([high], dtype=np.uint64))\n    low_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([low], dtype=np.uint64))\n    output_buf = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, bytes)",
         "detail": "main",
         "documentation": {}
     },
@@ -145,7 +154,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'\nmnemo = Mnemonic(\"english\")\nFIXED_WORDS = \"actual action amused black abandon adjust winter abandon abandon abandon abandon abandon\".split()\nDESTINY_WALLET = \"bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx\"\nFIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 1024*1024*10\nrepeater_workers = 1\nlocal_workers = 128\ntw = (global_workers-(global_workers%local_workers),)",
+        "peekOfCode": "os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'\ndef info():\n        print('\\n' + '=' * 60 + '\\nOpenCL Platforms and Devices')\n        for i,platformNum in enumerate(cl.get_platforms()):\n            print('=' * 60)\n            print('Platform %d - Name: ' %i + platformNum.name)\n            print('Platform %d - Vendor: ' %i + platformNum.vendor)\n            print('Platform %d - Version: ' %i + platformNum.version)\n            print('Platform %d - Profile: ' %i + platformNum.profile)\n            for device in platformNum.get_devices():",
         "detail": "main",
         "documentation": {}
     },
@@ -154,7 +163,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "mnemo = Mnemonic(\"english\")\nFIXED_WORDS = \"actual action amused black abandon adjust winter abandon abandon abandon abandon abandon\".split()\nDESTINY_WALLET = \"bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx\"\nFIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 1024*1024*10\nrepeater_workers = 1\nlocal_workers = 128\ntw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)",
+        "peekOfCode": "mnemo = Mnemonic(\"english\")\nFIXED_WORDS = \"actual action amused black abandon adjust winter abandon abandon abandon abandon abandon\".split()\nDESTINY_WALLET = \"bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx\"\nFIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 24_000_000\nrepeater_workers = 1_000_000\nlocal_workers = 256\ntw = (global_workers,)\ntt = (local_workers,)",
         "detail": "main",
         "documentation": {}
     },
@@ -163,7 +172,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "FIXED_WORDS = \"actual action amused black abandon adjust winter abandon abandon abandon abandon abandon\".split()\nDESTINY_WALLET = \"bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx\"\nFIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 1024*1024*10\nrepeater_workers = 1\nlocal_workers = 128\ntw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")",
+        "peekOfCode": "FIXED_WORDS = \"actual action amused black abandon adjust winter abandon abandon abandon abandon abandon\".split()\nDESTINY_WALLET = \"bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx\"\nFIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 24_000_000\nrepeater_workers = 1_000_000\nlocal_workers = 256\ntw = (global_workers,)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")",
         "detail": "main",
         "documentation": {}
     },
@@ -172,7 +181,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "DESTINY_WALLET = \"bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx\"\nFIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 1024*1024*10\nrepeater_workers = 1\nlocal_workers = 128\ntw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo",
+        "peekOfCode": "DESTINY_WALLET = \"bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx\"\nFIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 24_000_000\nrepeater_workers = 1_000_000\nlocal_workers = 256\ntw = (global_workers,)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo",
         "detail": "main",
         "documentation": {}
     },
@@ -181,7 +190,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "FIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 1024*1024*10\nrepeater_workers = 1\nlocal_workers = 128\ntw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):",
+        "peekOfCode": "FIXED_SEED = \"actual action amused black abandon adjust winter \"\nblock_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 24_000_000\nrepeater_workers = 1_000_000\nlocal_workers = 256\ntw = (global_workers,)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):",
         "detail": "main",
         "documentation": {}
     },
@@ -190,7 +199,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "block_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 1024*1024*10\nrepeater_workers = 1\nlocal_workers = 128\ntw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")",
+        "peekOfCode": "block_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)\nglobal_workers = 24_000_000\nrepeater_workers = 1_000_000\nlocal_workers = 256\ntw = (global_workers,)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")",
         "detail": "main",
         "documentation": {}
     },
@@ -199,7 +208,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "global_workers = 1024*1024*10\nrepeater_workers = 1\nlocal_workers = 128\ntw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")\n    print(f\"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}\")",
+        "peekOfCode": "global_workers = 24_000_000\nrepeater_workers = 1_000_000\nlocal_workers = 256\ntw = (global_workers,)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")\n    print(f\"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}\")",
         "detail": "main",
         "documentation": {}
     },
@@ -208,7 +217,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "repeater_workers = 1\nlocal_workers = 128\ntw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")\n    print(f\"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}\")\n    print(f\"OpenCL Version: {device.version.strip()}\")",
+        "peekOfCode": "repeater_workers = 1_000_000\nlocal_workers = 256\ntw = (global_workers,)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")\n    print(f\"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}\")\n    print(f\"OpenCL Version: {device.version.strip()}\")",
         "detail": "main",
         "documentation": {}
     },
@@ -217,7 +226,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "local_workers = 128\ntw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")\n    print(f\"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}\")\n    print(f\"OpenCL Version: {device.version.strip()}\")\n    print(f\"Driver Version: {device.driver_version.strip()}\")",
+        "peekOfCode": "local_workers = 256\ntw = (global_workers,)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")\n    print(f\"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}\")\n    print(f\"OpenCL Version: {device.version.strip()}\")\n    print(f\"Driver Version: {device.driver_version.strip()}\")",
         "detail": "main",
         "documentation": {}
     },
@@ -226,7 +235,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "tw = (global_workers-(global_workers%local_workers),)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")\n    print(f\"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}\")\n    print(f\"OpenCL Version: {device.version.strip()}\")\n    print(f\"Driver Version: {device.driver_version.strip()}\")\n    print(f\"Max Compute Units: {device.max_compute_units}\")",
+        "peekOfCode": "tw = (global_workers,)\ntt = (local_workers,)\nprint(f\"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}\")\n# Função para imprimir as informações do dispositivo\ndef print_device_info(device):\n    print(f\"Device Name: {device.name.strip()}\")\n    print(f\"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}\")\n    print(f\"OpenCL Version: {device.version.strip()}\")\n    print(f\"Driver Version: {device.driver_version.strip()}\")\n    print(f\"Max Compute Units: {device.max_compute_units}\")",
         "detail": "main",
         "documentation": {}
     },
