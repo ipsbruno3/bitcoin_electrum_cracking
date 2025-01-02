@@ -32,11 +32,11 @@ inline ulong L1(ulong x) {
     ulong t1 = K + SHA512_S1(e) + F1(e, f, g) + x;                             \
     ulong t2 = SHA512_S0(a) + F0(a, b, c);                                     \
     h += t1;                                                                   \
-    d += h,h += t2;
+    d += h,h += t2;   \
 }
 void sha512_procces(ulong *message, ulong *H) {
-  uint id = get_local_id(0);
-  if (id == 1) {
+  ///uint id = get_local_id(0);
+//  if (id == 1) {
     __private ulong A0 = H[0], A1 = H[1], A2 = H[2], A3 = H[3], A4 = H[4],
                     A5 = H[5], A6 = H[6], A7 = H[7];
 
@@ -110,9 +110,9 @@ void sha512_procces(ulong *message, ulong *H) {
     __private ulong W77 = W61 + L0(W62) + W70 + L1(W75);
     __private ulong W78 = W62 + L0(W63) + W71 + L1(W76);
     __private ulong W79 = W63 + L0(W64) + W72 + L1(W77);
-  }
-  mem_fence(CLK_LOCAL_MEM_FENCE);
-  if (!id) {
+
+  //mem_fence(CLK_LOCAL_MEM_FENCE);
+  ///if (!id) {
     RoR(A0, A1, A2, A3, A4, A5, A6, A7, message[0], 0x428a2f98d728ae22);
     RoR(A7, A0, A1, A2, A3, A4, A5, A6, message[1], 0x7137449123ef65cd);
     RoR(A6, A7, A0, A1, A2, A3, A4, A5, message[2], 0xb5c0fbcfec4d3b2f);
@@ -202,7 +202,7 @@ void sha512_procces(ulong *message, ulong *H) {
     H[5] += A5;
     H[6] += A6;
     H[7] += A7;
-  }
+//  }
 }
 void sha512_hash_two_blocks_message_fixed(ulong *message, ulong *H) {
   INIT_SHA512(H);

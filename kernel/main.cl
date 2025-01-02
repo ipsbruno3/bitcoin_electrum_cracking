@@ -56,7 +56,7 @@ __kernel void verify(__global ulong *L, __global ulong *H,
   ulong y[6];
   point_mul_xy(x, y, seedNum);
   if (index % 10000000 == 0) {
-    printf("%s | "
+    printf("%s| "
            "PEO:%016llx%016llx%016llx%016llx%016llx%016llx%016llx%016llx%"
            "016llx | W:%016llx | X:%016llx | T:%016llx | U:%016llx | V:%016llx "
            "| Y:%016llx |\n",
