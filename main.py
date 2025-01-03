@@ -38,16 +38,17 @@ DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
 FIXED_SEED = "actual action amused black abandon adjust winter "
 
 block_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)
-global_workers = 24_000_000
-repeater_workers = 1_000_000
-local_workers = 256
 
+repeater_workers = 1
+local_workers = 256
+global_workers = 50000
+
+global_workers -= global_workers%local_workers
 tw = (global_workers,)
 tt = (local_workers,)
 
 print(f"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}")
 
-# Função para imprimir as informações do dispositivo
 def print_device_info(device):
     print(f"Device Name: {device.name.strip()}")
     print(f"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}")
@@ -77,11 +78,15 @@ def run_kernel(program, queue):
     low_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([low], dtype=np.uint64))
     output_buf = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, bytes)
     kernel.set_args(high_buf, low_buf, output_buf)
-
-    cl.enqueue_nd_range_kernel(queue, kernel, tw,tt).wait()
-
     
-    resultado = global_workers / (time.perf_counter() - inicio)
+    event = cl.enqueue_nd_range_kernel(queue, kernel, tw, tt)
+    
+    event.wait()
+    start_time = event.profile.start
+    end_time = event.profile.end
+    execution_time = (end_time - start_time) * 1e-6  # Em milissegundos
+    print(f"Tempo de execução do kernel: {execution_time:.3f} ms")
+    resultado = (global_workers) / (time.perf_counter() - inicio)
     result = np.empty(elements, dtype=np.uint64)  # Adjust the result array 
     cl.enqueue_copy(queue, result, output_buf).wait()
 
@@ -123,14 +128,14 @@ def words_to_indices(words):
     return np.array(indices, dtype=np.int32)
 
 
-def mnemonic_to_uint64_pair(indices):
+def mnemonic_to_uint64_pair(indices): 
     binary_string = ''.join(f"{index:011b}" for index in indices)[:-4]
     binary_string = binary_string.ljust(128, '0')
     low = int(binary_string[:64], 2)
     high = int(binary_string[64:], 2)
     return high, low
-
-
+  
+ 
 def uint64_pair_to_mnemonic(high, low):
     binary_string = f"{high:064b}{low:064b}"
     indices = [int(binary_string[i:i+11], 2)
@@ -148,15 +153,13 @@ def main():
         device = devices[0]
         print_device_info(device)
         context = cl.Context([device])
-        queue = cl.CommandQueue(context)
-        print(f"Dispositivo: {device.name}")
-        program = build_program(context,
-                                "./kernel/common.cl",
-                                "./kernel/sha256.cl",
-                                "./kernel/sha512_hmac.cl",
-                                "./kernel/main.cl"
-                                )
+        queue = cl.CommandQueue(context, properties=cl.command_queue_properties.PROFILING_ENABLE)
 
+        program = build_program(context,"./kernel/main.cl")
+        if not (device.queue_properties & cl.command_queue_properties.PROFILING_ENABLE):
+            print("O dispositivo não suporta perfilamento!")
+        else:
+            print("Perfilamento habilitado.")
         run_kernel(program, queue)
 
         print("Kernel executado com sucesso.")
