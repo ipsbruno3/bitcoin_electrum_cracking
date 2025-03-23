@@ -1,3 +1,30 @@
+/*
+ *    Custom SHA-512 Implementation for Bitcoin
+ *    -------------------------------------------
+ *    This is a highly optimized, custom implementation of the SHA-512 algorithm.
+ *    It draws upon techniques from projects such as John the Ripper, Hashcat, and various
+ *    Bitcracking-ng initiatives, and is designed to maximize performance while minimizing memory overhead.
+ *
+ *    Technical Optimizations:
+ *      1. Uses 64-bit words (ulongs) to process data in 64-bit blocks, ensuring efficient memory usage.
+ *      2. Implements a manual right-rotation (RoR) routine, reducing the number of instructions compared
+ *         to conventional loop-based rotations (only H/D increments).
+ *      3. Fully unrolls the processing loop (manual loop unrolling), employing a vertical rotation algorithm
+ *         to eliminate the overhead associated with incremental for-loops and conditionals.
+ *      4. Leverages the native OpenCL "bitselect" intrinsic to accelerate bit-level operations for enhanced performance.
+ *      5. Directly utilizes the original message words (indices 0–15) to avoid redundant computation during
+ *         the message schedule expansion (W0–W16).
+ *      6. The design is open to further optimizations and the integration of additional intrinsics as new opportunities arise.
+ *
+ *    This implementation efficiently processes two 1024-bit blocks and represents the most efficient
+ *    SHA-512 solution developed.
+ *    https://github.com/ipsbrunoreserva
+ *
+ * Reference:
+ * https://github.com/brichard19/core-decrypt/blob/7b0ea520372a7d0cc728d71e5a01572f09e7e29e/src/core-decrypt.cl
+ * https://github.com/LIMXTEC/Xevan-GPU-Miner/blob/2994cf62171073099fab94babf1a75535c5be3fc/kernel/sha2big.cl#L46
+ */
+
 
 #define INIT_SHA512(a)                                                         \
   (a)[0] = 0x6a09e667f3bcc908UL;                                               \
@@ -9,8 +36,6 @@
   (a)[6] = 0x1f83d9abfb41bd6bUL;                                               \
   (a)[7] = 0x5be0cd19137e2179UL;
 
-#define F1(x, y, z) (bitselect(z, y, x))
-#define F0(x, y, z) (bitselect(x, y, ((x) ^ (z))))
 #define rotr64(a, n) (rotate((a), (64ul - n)))
 
 inline ulong L0(ulong x) {
@@ -24,93 +49,8 @@ inline ulong L1(ulong x) {
 #define SHA512_S0(x) (rotr64(x, 28ul) ^ rotr64(x, 34ul) ^ rotr64(x, 39ul))
 #define SHA512_S1(x) (rotr64(x, 14ul) ^ rotr64(x, 18ul) ^ rotr64(x, 41ul))
 
-#define COPY_EIGHT(a, b)                                                       \
-  (a)[0] = (b)[0], (a)[1] = (b)[1], (a)[2] = (b)[2], (a)[3] = (b)[3],          \
-  (a)[4] = (b)[4], (a)[5] = (b)[5], (a)[6] = (b)[6], (a)[7] = (b)[7];
-
-#define COPY_EIGHT_XOR(a, b)                                                   \
-  (a)[0] ^= (b)[0];                                                            \
-  (a)[1] ^= (b)[1];                                                            \
-  (a)[2] ^= (b)[2];                                                            \
-  (a)[3] ^= (b)[3];                                                            \
-  (a)[4] ^= (b)[4];                                                            \
-  (a)[5] ^= (b)[5];                                                            \
-  (a)[6] ^= (b)[6];                                                            \
-  (a)[7] ^= (b)[7];
-
-#define MoR(a, b, c, d, e, f, g, h, x, i)                                      \
-  d += h + P1(e, f, g, x, i);                                                  \
-  h += P1(e, f, g, x, i) + SHA512_S0(a) + F0(a, b, c);                         \
-                                                                               \
-  c += g + P1(d, e, f, x, i + 1);                                              \
-  g += P1(d, e, f, x, i + 1) + SHA512_S0(h) + F0(h, a, b);                     \
-                                                                               \
-  b += f + P1(c, d, e, x, i + 2);                                              \
-  f += P1(c, d, e, x, i + 2) + SHA512_S0(g) + F0(g, h, a);                     \
-                                                                               \
-  a += P1(b, c, d, x, i + 3) + e;                                              \
-  e += P1(b, c, d, x, i + 3) + SHA512_S0(f) + F0(f, g, h);                     \
-                                                                               \
-  h += P1(a, b, c, x, i + 4) + d;                                              \
-  d += P1(a, b, c, x, i + 4) + SHA512_S0(e) + F0(e, f, g);                     \
-                                                                               \
-  g += P1(h, a, b, x, i + 5) + c;                                              \
-  c += P1(h, a, b, x, i + 5) + SHA512_S0(d) + F0(d, e, f);                     \
-                                                                               \
-  f += P1(g, h, a, x, i + 6) + b;                                              \
-  b += P1(g, h, a, x, i + 6) + SHA512_S0(c) + F0(c, d, e);                     \
-                                                                               \
-  e += a + P1(f, g, h, x, i + 7);                                              \
-  a += P1(f, g, h, x, i + 7) + SHA512_S0(b) + F0(b, c, d);
-
-__constant ulong SHA512_PRIMES[80] = {
-    0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f,
-    0xe9b5dba58189dbbc, 0x3956c25bf348b538, 0x59f111f1b605d019,
-    0x923f82a4af194f9b, 0xab1c5ed5da6d8118, 0xd807aa98a3030242,
-    0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
-    0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235,
-    0xc19bf174cf692694, 0xe49b69c19ef14ad2, 0xefbe4786384f25e3,
-    0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65, 0x2de92c6f592b0275,
-    0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5,
-    0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f,
-    0xbf597fc7beef0ee4, 0xc6e00bf33da88fc2, 0xd5a79147930aa725,
-    0x06ca6351e003826f, 0x142929670a0e6e70, 0x27b70a8546d22ffc,
-    0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df,
-    0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6,
-    0x92722c851482353b, 0xa2bfe8a14cf10364, 0xa81a664bbc423001,
-    0xc24b8b70d0f89791, 0xc76c51a30654be30, 0xd192e819d6ef5218,
-    0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8,
-    0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99,
-    0x34b0bcb5e19b48a8, 0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb,
-    0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3, 0x748f82ee5defb2fc,
-    0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
-    0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915,
-    0xc67178f2e372532b, 0xca273eceea26619c, 0xd186b8c721c0c207,
-    0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178, 0x06f067aa72176fba,
-    0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b,
-    0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc,
-    0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a,
-    0x5fcb6fab3ad6faec, 0x6c44198c4a475817};
-
-#define P1(e, f, g, x, i) SHA512_PRIMES[i] + SHA512_S1(e) + F1(e, f, g) + x[i]
-
-#pragma cl_optimization_level 4
-#define INIT_SHA512(a)                                                         \
-  (a)[0] = 0x6a09e667f3bcc908UL;                                               \
-  (a)[1] = 0xbb67ae8584caa73bUL;                                               \
-  (a)[2] = 0x3c6ef372fe94f82bUL;                                               \
-  (a)[3] = 0xa54ff53a5f1d36f1UL;                                               \
-  (a)[4] = 0x510e527fade682d1UL;                                               \
-  (a)[5] = 0x9b05688c2b3e6c1fUL;                                               \
-  (a)[6] = 0x1f83d9abfb41bd6bUL;                                               \
-  (a)[7] = 0x5be0cd19137e2179UL;
-
 #define F1(x, y, z) (bitselect(z, y, x))
 #define F0(x, y, z) (bitselect(x, y, ((x) ^ (z))))
-#define rotr64(a, n) (rotate((a), (64ul - n)))
-
-#define SHA512_S0(x) (rotr64(x, 28ul) ^ rotr64(x, 34ul) ^ rotr64(x, 39ul))
-#define SHA512_S1(x) (rotr64(x, 14ul) ^ rotr64(x, 18ul) ^ rotr64(x, 41ul))
 
 #define RoR(a, b, c, d, e, f, g, h, x, K)                                      \
   {                                                                            \
@@ -289,29 +229,5 @@ void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
   sha512_procces(message + 16, H);
 }
 
-void pbkdf2_hmac_sha512_long(ulong *inner_data, ulong *outer_data, ulong *T) {
-  ulong U[8], OU[8], GU[8];
-  INIT_SHA512(GU);
-  INIT_SHA512(OU);
-
-  sha512_procces(inner_data, GU);
-  sha512_procces(outer_data, OU);
-  COPY_EIGHT(U, GU);
-  sha512_procces(inner_data+16, U);
-  COPY_EIGHT(outer_data + 16, U);
-  COPY_EIGHT(T, OU);
-  sha512_procces(outer_data+16, T);
-  COPY_EIGHT(U, T);
-  inner_data[24] = 0x8000000000000000UL;
-  inner_data[31] = 1536UL;
-  COPY_EIGHT(outer_data + 16, T);  
-  for (ushort i = 1; i < 2048; ++i) {
-    COPY_EIGHT(inner_data + 16, U);
-    COPY_EIGHT(U, GU);
-    sha512_procces(inner_data + 16, U);
-    COPY_EIGHT(outer_data + 16, U);
-    COPY_EIGHT(U, OU);
-    sha512_procces(outer_data + 16, U);
-    COPY_EIGHT_XOR(T, U);
-  }
-}
+#include "kernel/hmac_sha512.cl"
+#include "kernel/pbkdf2 hmac sha512.cl"

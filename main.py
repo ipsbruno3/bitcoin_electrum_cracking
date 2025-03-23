@@ -4,80 +4,73 @@ import pyopencl as cl
 from mnemonic import Mnemonic
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import time
+import hashlib
+import hmac
+seed_hex = "db4c5960c73d510cfd34c8ccbab2058b893e2a6c2af88140982e4f1d028fc6a56ba3e48738fca465cd5014a41169558ea8360ca1d8336fc6e5b946e3e0fdf012"
+
+# Converter a seed para bytes
+seed_bytes = bytes.fromhex(seed_hex)
+
+# Chave "Bitcoin seed" como bytes
+key = b"Bitcoin seed"
+
+# Calcular HMAC-SHA512
+hmac_result = hmac.new(key, seed_bytes, hashlib.sha512).digest()
+
+# Separar em Master Private Key e Chain Code
+master_private_key = hmac_result[:32].hex()
+chain_code = hmac_result[32:].hex()
+
+# Mostrar os resultados
+print(f"Em Python pegando o HMAC-SHA512 Result em HEX: {hmac_result.hex()}")
+
+
+# Converter 
 import os
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
+import random
 
-def info():
-        print('\n' + '=' * 60 + '\nOpenCL Platforms and Devices')
-        for i,platformNum in enumerate(cl.get_platforms()):
-            print('=' * 60)
-            print('Platform %d - Name: ' %i + platformNum.name)
-            print('Platform %d - Vendor: ' %i + platformNum.vendor)
-            print('Platform %d - Version: ' %i + platformNum.version)
-            print('Platform %d - Profile: ' %i + platformNum.profile)
-
-            for device in platformNum.get_devices():
-                print(' ' + '-' * 56)
-                print(' Device - Name: ' + device.name)
-                print(' Device - Type: ' + cl.device_type.to_string(device.type))
-                print(' Device - Max Clock Speed: {0} Mhz'.format(device.max_clock_frequency))
-                print(' Device - Compute Units: {0}'.format(device.max_compute_units))
-                print(' Device - Local Memory: {0:.0f} KB'.format(device.local_mem_size / 1024.0))
-                print(' Device - Constant Memory: {0:.0f} KB'.format(device.max_constant_buffer_size / 1024.0))
-                print(' Device - Global Memory: {0:.0f} GB'.format(device.global_mem_size / 1073741824.0))
-                print(' Device - Max Buffer/Image Size: {0:.0f} MB'.format(device.max_mem_alloc_size / 1048576.0))
-                print(' Device - Max Work Group Size: {0:.0f}'.format(device.max_work_group_size))
-                print('\n')
-                
-info()
+BIP32_E8_ID = 1;
+BIP39_EIGHT_LEN = ['abstract', 'accident', 'acoustic', 'announce', 'artefact', 'attitude', 'bachelor', 'broccoli', 'business', 'category', 'champion', 'cinnamon', 'congress', 'consider', 'convince', 'cupboard', 'daughter', 'december', 'decorate', 'decrease', 'describe', 'dinosaur', 'disagree', 'discover', 'disorder', 'distance', 'document', 'electric', 'elephant', 'elevator', 'envelope', 'evidence', 'exchange', 'exercise', 'favorite', 'february', 'festival', 'frequent', 'hedgehog', 'hospital', 'identify', 'increase', 'indicate', 'industry', 'innocent', 'interest', 'kangaroo', 'language', 'marriage', 'material', 'mechanic', 'midnight', 'mosquito', 'mountain', 'multiply', 'mushroom', 'negative', 'ordinary', 'original', 'physical', 'position', 'possible', 'practice', 'priority', 'property', 'purchase', 'question', 'remember', 'resemble', 'resource', 'response', 'scissors', 'scorpion', 'security', 'sentence', 'shoulder', 'solution', 'squirrel', 'strategy', 'struggle', 'surprise', 'surround', 'together', 'tomorrow', 'tortoise', 'transfer', 'umbrella', 'universe']
 
 mnemo = Mnemonic("english")
 
-FIXED_WORDS = "actual action amused black abandon adjust winter abandon abandon abandon abandon abandon".split()
+FIXED_WORDS = f"abandon abandon abandon abandon abandon abandon abandon {BIP39_EIGHT_LEN[BIP32_E8_ID]} ? ? ? ?".replace('?', "abandon").split()
+print(FIXED_WORDS)
 DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
-FIXED_SEED = "actual action amused black abandon adjust winter "
 
-block_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)
 
 repeater_workers = 1
 local_workers = 256
-global_workers = 50000
+global_workers = 512
 
 global_workers -= global_workers%local_workers
 tw = (global_workers,)
 tt = (local_workers,)
 
+
 print(f"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}")
 
-def print_device_info(device):
-    print(f"Device Name: {device.name.strip()}")
-    print(f"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}")
-    print(f"OpenCL Version: {device.version.strip()}")
-    print(f"Driver Version: {device.driver_version.strip()}")
-    print(f"Max Compute Units: {device.max_compute_units}")
-    print(f"Max Work Group Size: {device.max_work_group_size}")
-    print(f"Max Work Item Dimensions: {device.max_work_item_dimensions}")
-    print(f"Max Work Item Sizes: {device.max_work_item_sizes}")
-    print(f"Global Memory Size: {device.global_mem_size / (1024 ** 2):.2f} MB")
-    print(f"Local Memory Size: {device.local_mem_size / 1024:.2f} KB")
-    print(f"Max Clock Frequency: {device.max_clock_frequency} MHz")
-    print(f"Address Bits: {device.address_bits}")
-    print(f"Available: {'Yes' if device.available else 'No'}")
 
+    
 def run_kernel(program, queue):
     context = program.context
     kernel = program.verify
-    elements = global_workers * 10
+    elements = global_workers * 12000
     bytes = elements * 8
-    
-    
-    
     inicio = time.perf_counter()
-    high, low = mnemonic_to_uint64_pair(words_to_indices(FIXED_WORDS))
+    indices = words_to_indices(FIXED_WORDS)
+    print(indices)
+    high, low = mnemonic_to_uint64_pair(indices)
+    print(high,low)
     high_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([high], dtype=np.uint64))
     low_buf = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([low], dtype=np.uint64))
+    p = cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([1], dtype=np.uint32))
+
+ 
     output_buf = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, bytes)
-    kernel.set_args(high_buf, low_buf, output_buf)
+    kernel.set_args(p, high_buf, low_buf, output_buf)
     
     event = cl.enqueue_nd_range_kernel(queue, kernel, tw, tt)
     
@@ -87,7 +80,7 @@ def run_kernel(program, queue):
     execution_time = (end_time - start_time) * 1e-6  # Em milissegundos
     print(f"Tempo de execução do kernel: {execution_time:.3f} ms")
     resultado = (global_workers) / (time.perf_counter() - inicio)
-    result = np.empty(elements, dtype=np.uint64)  # Adjust the result array 
+    result = np.empty(elements, dtype=np.uint64) 
     cl.enqueue_copy(queue, result, output_buf).wait()
 
     print(f"Tempo de execução: {resultado:.2f} por seguno")
@@ -131,8 +124,8 @@ def words_to_indices(words):
 def mnemonic_to_uint64_pair(indices): 
     binary_string = ''.join(f"{index:011b}" for index in indices)[:-4]
     binary_string = binary_string.ljust(128, '0')
-    low = int(binary_string[:64], 2)
-    high = int(binary_string[64:], 2)
+    high = int(binary_string[:64], 2)
+    low = int(binary_string[64:], 2)
     return high, low
   
  
@@ -151,7 +144,7 @@ def main():
         platforms = cl.get_platforms()
         devices = platforms[0].get_devices()
         device = devices[0]
-        print_device_info(device)
+
         context = cl.Context([device])
         queue = cl.CommandQueue(context, properties=cl.command_queue_properties.PROFILING_ENABLE)
 
@@ -172,6 +165,7 @@ def load_program_source(filename):
     with open(filename, 'r') as f:
         content = f.read()
     return content
+
 
 
 if __name__ == "__main__":
