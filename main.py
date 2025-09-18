@@ -40,18 +40,42 @@ FIXED_WORDS = f"abandon abandon abandon abandon abandon abandon abandon {BIP39_E
 print(FIXED_WORDS)
 DESTINY_WALLET = "bc1q9nfphml9vzfs6qxyyfqdve5vrqw62dp26qhalx"
 
+<<<<<<< HEAD
 
 repeater_workers = 1
 local_workers = 256
 global_workers = 512
+=======
+block_fix = len(FIXED_SEED)-(len(FIXED_SEED)%8)
+global_workers = 24_000_000
+repeater_workers = 1_000_000
+local_workers = 256
+>>>>>>> parent of 197c93f (atualização desempenho pbkdf2)
 
-global_workers -= global_workers%local_workers
 tw = (global_workers,)
 tt = (local_workers,)
 
 
 print(f"Rodando OpenCL com {global_workers} GPU THREADS e {repeater_workers * global_workers}")
 
+<<<<<<< HEAD
+=======
+# Função para imprimir as informações do dispositivo
+def print_device_info(device):
+    print(f"Device Name: {device.name.strip()}")
+    print(f"Device Type: {'GPU' if device.type == cl.device_type.GPU else 'CPU'}")
+    print(f"OpenCL Version: {device.version.strip()}")
+    print(f"Driver Version: {device.driver_version.strip()}")
+    print(f"Max Compute Units: {device.max_compute_units}")
+    print(f"Max Work Group Size: {device.max_work_group_size}")
+    print(f"Max Work Item Dimensions: {device.max_work_item_dimensions}")
+    print(f"Max Work Item Sizes: {device.max_work_item_sizes}")
+    print(f"Global Memory Size: {device.global_mem_size / (1024 ** 2):.2f} MB")
+    print(f"Local Memory Size: {device.local_mem_size / 1024:.2f} KB")
+    print(f"Max Clock Frequency: {device.max_clock_frequency} MHz")
+    print(f"Address Bits: {device.address_bits}")
+    print(f"Available: {'Yes' if device.available else 'No'}")
+>>>>>>> parent of 197c93f (atualização desempenho pbkdf2)
 
     
 def run_kernel(program, queue):
@@ -70,6 +94,7 @@ def run_kernel(program, queue):
 
  
     output_buf = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, bytes)
+<<<<<<< HEAD
     kernel.set_args(p, high_buf, low_buf, output_buf)
     
     event = cl.enqueue_nd_range_kernel(queue, kernel, tw, tt)
@@ -81,6 +106,15 @@ def run_kernel(program, queue):
     print(f"Tempo de execução do kernel: {execution_time:.3f} ms")
     resultado = (global_workers) / (time.perf_counter() - inicio)
     result = np.empty(elements, dtype=np.uint64) 
+=======
+    kernel.set_args(high_buf, low_buf, output_buf)
+
+    cl.enqueue_nd_range_kernel(queue, kernel, tw,tt).wait()
+
+    
+    resultado = global_workers / (time.perf_counter() - inicio)
+    result = np.empty(elements, dtype=np.uint64)  # Adjust the result array 
+>>>>>>> parent of 197c93f (atualização desempenho pbkdf2)
     cl.enqueue_copy(queue, result, output_buf).wait()
 
     print(f"Tempo de execução: {resultado:.2f} por seguno")
@@ -121,14 +155,14 @@ def words_to_indices(words):
     return np.array(indices, dtype=np.int32)
 
 
-def mnemonic_to_uint64_pair(indices): 
+def mnemonic_to_uint64_pair(indices):
     binary_string = ''.join(f"{index:011b}" for index in indices)[:-4]
     binary_string = binary_string.ljust(128, '0')
     high = int(binary_string[:64], 2)
     low = int(binary_string[64:], 2)
     return high, low
-  
- 
+
+
 def uint64_pair_to_mnemonic(high, low):
     binary_string = f"{high:064b}{low:064b}"
     indices = [int(binary_string[i:i+11], 2)
@@ -146,13 +180,15 @@ def main():
         device = devices[0]
 
         context = cl.Context([device])
-        queue = cl.CommandQueue(context, properties=cl.command_queue_properties.PROFILING_ENABLE)
+        queue = cl.CommandQueue(context)
+        print(f"Dispositivo: {device.name}")
+        program = build_program(context,
+                                "./kernel/common.cl",
+                                "./kernel/sha256.cl",
+                                "./kernel/sha512_hmac.cl",
+                                "./kernel/main.cl"
+                                )
 
-        program = build_program(context,"./kernel/main.cl")
-        if not (device.queue_properties & cl.command_queue_properties.PROFILING_ENABLE):
-            print("O dispositivo não suporta perfilamento!")
-        else:
-            print("Perfilamento habilitado.")
         run_kernel(program, queue)
 
         print("Kernel executado com sucesso.")
