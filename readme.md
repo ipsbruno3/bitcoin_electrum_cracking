@@ -6,9 +6,8 @@
 📧 [bsbruno@proton.me](mailto:bsbruno@proton.me)
 📱 [+55 11 99740-2197](https://wa.me/5511997402197)
 ___
-GitHub: [ipsbruno](https://github.com/ipsbruno) | [ipsbrunoreserva](https://github.com/ipsbrunoreserva) | [ipsbruno3](https://github.com/ipsbruno3) 
----
-Pastebin: [ipsBruno](https://pastebin.com/u/ipsBruno) | [Drakins](https://pastebin.com/u/Drakins)
+### GitHub: [ipsbruno](https://github.com/ipsbruno) | [ipsbrunoreserva](https://github.com/ipsbrunoreserva) | [ipsbruno3](https://github.com/ipsbruno3) 
+### Pastebin: [ipsBruno](https://pastebin.com/u/ipsBruno) | [Drakins](https://pastebin.com/u/Drakins)
 
 ---
 
@@ -122,7 +121,9 @@ $$
 * $k = 12$ → $\approx 85.3\times$
 * $k = 8$  → $\approx 14.2\times$
 
-> Even though each candidate needs one HMAC, the massive PBKDF2 reduction yields a net 10–100× overall improvement, depending on seed type.
+---
+
+:warning: ` Even though each candidate needs one HMAC, the massive PBKDF2 reduction yields a net 10–100× overall improvement, depending on seed type.`
 
 ---
 
@@ -180,4 +181,5 @@ $$
 
 **Ethical Notice:**
 This analysis supports **legitimate recovery** of wallets owned by the user. Unauthorized access to third-party wallets is **illegal and unethical**.
+
 
