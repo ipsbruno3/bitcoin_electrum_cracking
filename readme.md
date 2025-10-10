@@ -55,7 +55,7 @@ $$
 ✅ **Final Expression:**
 
 $$
-\boxed{N_{BIP39}(5) = 2.25\text{ quadrillion}}
+\boxed{N_{BIP39}(5) = 2.25\text{ quadrillions}}
 $$
 
 ---
@@ -82,7 +82,7 @@ Example (`u = 5`):
 ✅ **Final Expression:**
 
 $$
-\boxed{N_{Electrum}^{(PBKDF2)}(5,12) = 8.79 \times 10^{12}}
+\boxed{N_{Electrum}^{(PBKDF2)}(5,12) = 8.79 \text { trillions}}
 $$
 
 > Note: The often-cited factor of 0.5 is an oversimplification (Segwit/2FA Addresses); actual filtering probability is $2^{-k}$, not fixed.
@@ -180,3 +180,4 @@ $$
 
 **Ethical Notice:**
 This analysis supports **legitimate recovery** of wallets owned by the user. Unauthorized access to third-party wallets is **illegal and unethical**.
+
