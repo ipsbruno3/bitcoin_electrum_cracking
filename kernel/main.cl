@@ -1,201 +1,106 @@
 #include "kernel/bip39.cl"
+#include "kernel/common.cl"
 #include "kernel/ec.cl"
+#include "kernel/ripemd_beech.cl"
 #include "kernel/sha256.cl"
-#include "kernel/sha512_hmac.cl"
+#include "kernel/sha512.cl"
 
-const ulong gInnerData[32] = {0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              0x3636363636363636UL,
-                              7885351518267664739UL,
-                              6442450944UL,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              1120UL};
+/* ===== Portáveis: atômicos 1.2 vs 2.0 ===== */
+#if __OPENCL_C_VERSION__ >= 200
+  // OpenCL 2.0+: use C11 atomics
+  #define OUTCNT_ARG      __global atomic_uint *
+  #define OUTCNT_FETCH()  atomic_fetch_add_explicit(out_count, 1u, memory_order_relaxed, memory_scope_device)
+#else
+  // OpenCL 1.2: legacy atomics
+  #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+  #pragma OPENCL EXTENSION cl_khr_local_int32_base_atomics  : enable
+  #define OUTCNT_ARG      __global volatile uint *
+  #define OUTCNT_FETCH()  atomic_inc(out_count)   /* retorna valor anterior, incrementa mod 2^32 */
+#endif
 
-const ulong gOuterData[32] = {0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x5C5C5C5C5C5C5C5CUL,
-                              0x8000000000000000UL,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              0,
-                              1536U};
+typedef struct {
+    ulong  tag64;     // 8
+    ushort widx[12];  // 24 -> total 40 bytes
+} hit_t;
 
-#define prepareSeedString(seedNum, seedString, offset)                         \
-  {                                                                            \
-    for (int i = 0, y; i < 12; i++) {                                          \
-      y = seedNum[i];                                                          \
-      for (int j = 0; j < 9; j++) {                                            \
-        seedString[offset + j] = wordsString[y][j];                            \
-      }                                                                        \
-      offset += wordsLen[y] + 1;                                               \
-    }                                                                          \
-    seedString[offset - 1] = '\0';                                             \
-  }
+/* --- kernel --- */
+__kernel void verify(__global const ulong *first,
+                     __global const ulong *H,
+                     __global const ulong *L,
+                     __global hit_t *out_hits,
+                     OUTCNT_ARG out_count,          // compatível com CL1.2/2.0
+                     const uint max_hits)
+{
+    const uint gid = get_global_id(0);
 
-#define ucharLong(input, input_len, output, offset)                            \
-  {                                                                            \
-    const uchar num_ulongs = (input_len + 7) / 8;                              \
-    for (uchar i = offset; i < num_ulongs; i++) {                              \
-      const uchar baseIndex = i * 8;                                           \
-      output[i] = ((ulong)input[baseIndex] << 56UL) |                          \
-                  ((ulong)input[baseIndex + 1] << 48UL) |                      \
-                  ((ulong)input[baseIndex + 2] << 40UL) |                      \
-                  ((ulong)input[baseIndex + 3] << 32UL) |                      \
-                  ((ulong)input[baseIndex + 4] << 24UL) |                      \
-                  ((ulong)input[baseIndex + 5] << 16UL) |                      \
-                  ((ulong)input[baseIndex + 6] << 8UL) |                       \
-                  ((ulong)input[baseIndex + 7]);                               \
-    }                                                                          \
-    for (uchar i = num_ulongs; i < 16; i++) {                                  \
-      output[i] = 0;                                                           \
-    }                                                                          \
-  }
+    const ulong memHigh  = H[0];
+    const ulong firstMem = L[0];
+    const ulong memLow   = firstMem + (ulong)gid + first[0];
 
-#define prepareSeedNumber(seedNum, memHigh, memLow)                            \
-  seedNum[0] = (memHigh & (2047UL << 53UL)) >> 53UL;                           \
-  seedNum[1] = (memHigh & (2047UL << 42UL)) >> 42UL;                           \
-  seedNum[2] = (memHigh & (2047UL << 31UL)) >> 31UL;                           \
-  seedNum[3] = (memHigh & (2047UL << 20UL)) >> 20UL;                           \
-  seedNum[4] = (memHigh & (2047UL << 9UL)) >> 9UL;                             \
-  seedNum[5] = (memHigh << 55UL) >> 53UL | ((memLow & (3UL << 62UL)) >> 62UL); \
-  seedNum[6] = (memLow & (2047UL << 51UL)) >> 51UL;                            \
-  seedNum[7] = (memLow & (2047UL << 40UL)) >> 40UL;                            \
-  seedNum[8] = (memLow & (2047UL << 29UL)) >> 29UL;                            \
-  seedNum[9] = (memLow & (2047UL << 18UL)) >> 18UL;                            \
-  seedNum[10] = (memLow & (2047UL << 7UL)) >> 7UL;                             \
-  seedNum[11] =                                                                \
-      (memLow << 57UL) >> 53UL | sha256_from_byte(memHigh, memLow) >> 4UL;
+    uint  seedNum[16] = {0};
+    uchar mnemonicString[128] = {0};
+    uint  offset = 0;
 
-uchar zeroString[128] = {0};
+    prepareSeedNumber(seedNum, memHigh, memLow);
+    prepareSeedString(seedNum, mnemonicString, offset);
 
-__kernel void verify(__global ulong *L, __global ulong *H,
-                     __global ulong *output) {
-  int gid = get_global_id(0);
-  int lid = 0;
+    if (offset == 0) return;              // proteção
+    const size_t mlen = (size_t)offset - 1;
 
-  ulong inner_data[32];
-  ulong outer_data[32];
+    ulong G[8] = {0};
+    hmac_sha512_seed_c99_ex(mnemonicString, mlen, G);
 
-  ulong memHigh = H[0];
-  ulong firstMem = L[0];
-  ulong memLow = firstMem + gid;
+    if (!isElectrumSegwit(G)) return;
 
-  ulong mnemonicLong[16];
-  ulong pbkdLong[16];
-  uint seedNum[16];
-  ulong W[180];
-  uchar mnemonicString[128] = {0};
-  uchar offset = 0;
-  uint seedNum[12] = {0};
-  __local ulong arrayLocal[128];
-  prepareSeedNumber(seedNum, memHigh, memLow);
-  prepareSeedString(seedNum, mnemonicString, offset);
-  ucharLong(mnemonicString, offset - 1, mnemonicLong, 0);
+    // Derivação BIP32 m/0'/0/i
+    ulong mnemonicLong[16]   = {0};
+    ulong inner_data[32]     = {0};
+    ulong outer_data[32]     = {0};
+    ulong hmacSeedOutput[8]  = {0};
+    ulong pbkdLong[16]       = {0};
 
-  for (lid = 0; lid < 16; lid++) {
-    pbkdLong[lid] = 0;
-    inner_data[lid] = mnemonicLong[lid] ^ 0x3636363636363636UL;
-    outer_data[lid] = mnemonicLong[lid] ^ 0x5C5C5C5C5C5C5C5CUL;
-    outer_data[lid + 16] = gOuterData[lid + 16];
-    inner_data[lid + 16] = gInnerData[lid + 16];
-  }
+    ucharLong(mnemonicString, mlen, mnemonicLong, 0);
 
-  pbkdf2_hmac_sha512_long(inner_data, outer_data, pbkdLong);
+    #pragma unroll
+    for (int lid = 0; lid < 16; lid++) {
+        inner_data[lid] = mnemonicLong[lid] ^ IPAD;
+        outer_data[lid] = mnemonicLong[lid] ^ OPAD;
+    }
+    // constantes (mesmas que você já usava)
+    outer_data[16] = 6655295901103053916UL;
+    inner_data[16] = 0x656c65637472756dULL;
+    inner_data[17] = 0x0000000180000000ULL;
+    outer_data[24] = 9223372036854775808UL;
+    outer_data[31] = 1536UL;
+    inner_data[31] = 1120UL;
 
-  if (gid % 50000 == 0) {
-    printf("Group: %d | Seed: \"%s\" | %016lx\n", gid, mnemonicString,
-           pbkdLong[0]);
-  }
+    pbkdf2_hmac_sha512_long(inner_data, outer_data, pbkdLong);
+    hmac_sha512_bitcoin_seed(pbkdLong, hmacSeedOutput);
 
-  // if (!lid) {
+    ulong kc[4] = {0}, cc[4] = {0};
+    uint  X[8]  = {0}, Y[8]  = {0};
 
-  // printf("%016lx\n", W17);
-  // seedNum[0] = (int)pbkdLong[0];
-  // seedNum[1] = (int)pbkdLong[1];
-  // seedNum[2] = (int)pbkdLong[2];
-  // seedNum[3] = (int)pbkdLong[3];
-  ulong index = memLow - firstMem;
-  // uint x[8];
-  // uint y[6];
-  // point_mul_xy(x, y, seedNum);
+    if (!derive_m_0h_0_i_pub(hmacSeedOutput, 0u, kc, cc, X, Y)) return;
 
-  // output[index] = pbkdLong[0];
-  // output[index + 1] = pbkdLong[1];
-  // output[index + 2] = pbkdLong[2];
-  // output[index + 3] = pbkdLong[3];
-  // output[index + 4] = pbkdLong[4];
-  // output[index + 5] = pbkdLong[5];
-  // output[index + 6] = pbkdLong[6];
-  // output[index + 7] = pbkdLong[7];
-  // output[index + 8] = memLow;
-  // output[index + 9] = memHigh;
-  //}
-}
+    const ulong t64 = b32sw_tag64_from_xy_le(X, Y);  // sua função de tag 64-bit
 
-__kernel void pbkdf2_hmac_sha512_test(__global uchar *py,
-                                      __global uchar *input) {
-  /*
-    ulong mnemonic_long[32];
+    // ring buffer: pega slot e escreve
+    const uint slot = (uint)OUTCNT_FETCH();
+    if (slot >= max_hits) {
+        // opcional: marcar overflow
+        return;
+    }
 
-    ulong aa[8];
-    uchar result[128];
-    uchar_to_ulong(input, strlen(input), mnemonic_long, 0);
-    pbkdf2_hmac_sha512_long(mnemonic_long, strlen(input), aa);
-    ulong_array_to_char(aa, 8, result);
+    out_hits[slot].tag64 = t64;
 
-    if (strcmp(result, py)) {
-      printf("\nIguais");
-    } else {
-      printf("\nDiferentes: ");
-      printf("Veio de la: %s %s %s", input, result, py);
-    }*/
+    for (int j = 0; j < 12; ++j) {
+        out_hits[slot].widx[j] = seedNum[j];
+    }
+
+    #ifdef DEBUG_PRINT
+    if ((gid & 0xFFFFFFu) == 0u) {
+        // %u para uint; %016lx para ulong em hexa 64-bit
+        printf("gid=%u tag64=%016lx\n", gid, (ulong)t64);
+    }
+    #endif
 }

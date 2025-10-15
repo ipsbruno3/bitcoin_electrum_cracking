@@ -1,3 +1,10 @@
 .vscode
 .env
 node_modules
+<<<<<<< HEAD
+=======
+.lh
+.venv
+Bitcoin_addresses_LATEST.txt.gz
+.git
+>>>>>>> cc7919b (electrum finder)

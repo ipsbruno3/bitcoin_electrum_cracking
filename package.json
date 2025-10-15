@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "electrum-mnemonic": "^2.0.0"
+  }
+}

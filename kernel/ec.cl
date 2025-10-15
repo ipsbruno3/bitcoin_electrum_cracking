@@ -1,472 +1,234 @@
-#define SECP256K1_B 7
+/*
+ *    Custom SHA-512 Implementation for Bitcoin
+ *    -------------------------------------------
+ *    This is a highly optimized, custom implementation of the SHA-512 algorithm.
+ *    It draws upon techniques from projects such as John the Ripper, Hashcat, and various
+ *    Bitcracking-ng initiatives, and is designed to maximize performance while minimizing memory overhead.
+ *
+ *    Technical Optimizations:
+ *      1. Uses 64-bit words (ulongs) to process data in 64-bit blocks, ensuring efficient memory usage.
+ *      2. Implements a manual right-rotation (RoR) routine, reducing the number of instructions compared
+ *         to conventional loop-based rotations (only H/D increments).
+ *      3. Fully unrolls the processing loop (manual loop unrolling), employing a vertical rotation algorithm
+ *         to eliminate the overhead associated with incremental for-loops and conditionals.
+ *      4. Leverages the native OpenCL "bitselect" intrinsic to accelerate bit-level operations for enhanced performance.
+ *      5. Directly utilizes the original message words (indices 0–15) to avoid redundant computation during
+ *         the message schedule expansion (W0–W16).
+ *      6. The design is open to further optimizations and the integration of additional intrinsics as new opportunities arise.
+ *
+ *    This implementation efficiently processes two 1024-bit blocks and represents the most efficient
+ *    SHA-512 solution developed.
+ *    https://github.com/ipsbrunoreserva
+ *
+ * Reference:
+ * https://github.com/brichard19/core-decrypt/blob/7b0ea520372a7d0cc728d71e5a01572f09e7e29e/src/core-decrypt.cl
+ * https://github.com/LIMXTEC/Xevan-GPU-Miner/blob/2994cf62171073099fab94babf1a75535c5be3fc/kernel/sha2big.cl#L46
+ */
 
-#define SECP256K1_P0 0xfffffc2f
-#define SECP256K1_P1 0xfffffffe
-#define SECP256K1_P2 0xffffffff
-#define SECP256K1_P3 0xffffffff
-#define SECP256K1_P4 0xffffffff
-#define SECP256K1_P5 0xffffffff
-#define SECP256K1_P6 0xffffffff
-#define SECP256K1_P7 0xffffffff
 
-#define SECPK256K_VALUES                                                       \
-  SECP256K1_P0, SECP256K1_P1, SECP256K1_P2, SECP256K1_P3, SECP256K1_P4,        \
-      SECP256K1_P5, SECP256K1_P6, SECP256K1_P7
+#define INIT_SHA512(a)                                                         \
+  (a)[0] = 0x6a09e667f3bcc908UL;                                               \
+  (a)[1] = 0xbb67ae8584caa73bUL;                                               \
+  (a)[2] = 0x3c6ef372fe94f82bUL;                                               \
+  (a)[3] = 0xa54ff53a5f1d36f1UL;                                               \
+  (a)[4] = 0x510e527fade682d1UL;                                               \
+  (a)[5] = 0x9b05688c2b3e6c1fUL;                                               \
+  (a)[6] = 0x1f83d9abfb41bd6bUL;                                               \
+  (a)[7] = 0x5be0cd19137e2179UL;
 
-__constant uint secpk256PreComputed[96] = {
-    0x16f81798, 0x59f2815b, 0x2dce28d9, 0x029bfcdb, 0xce870b07, 0x55a06295,
-    0xf9dcbbac, 0x79be667e, 0xfb10d4b8, 0x9c47d08f, 0xa6855419, 0xfd17b448,
-    0x0e1108a8, 0x5da4fbfc, 0x26a3c465, 0x483ada77, 0x04ef2777, 0x63b82f6f,
-    0x597aabe6, 0x02e84bb7, 0xf1eef757, 0xa25b0403, 0xd95c3b9a, 0xb7c52588,
-    0xbce036f9, 0x8601f113, 0x836f99b0, 0xb531c845, 0xf89d5229, 0x49344f85,
-    0x9258c310, 0xf9308a01, 0x84b8e672, 0x6cb9fd75, 0x34c2231b, 0x6500a999,
-    0x2a37f356, 0x0fe337e6, 0x632de814, 0x388f7b0f, 0x7b4715bd, 0x93460289,
-    0xcb3ddce4, 0x9aff5666, 0xd5c80ca9, 0xf01cc819, 0x9cd217eb, 0xc77084f0,
-    0xb240efe4, 0xcba8d569, 0xdc619ab7, 0xe88b84bd, 0x0a5c5128, 0x55b4a725,
-    0x1a072093, 0x2f8bde4d, 0xa6ac62d6, 0xdca87d3a, 0xab0d6840, 0xf788271b,
-    0xa6c9c426, 0xd4dba9dd, 0x36e5e3d6, 0xd8ac2226, 0x59539959, 0x235782c4,
-    0x54f297bf, 0x0877d8e4, 0x59363bd9, 0x2b245622, 0xc91a1c29, 0x2753ddd9,
-    0xcac4f9bc, 0xe92bdded, 0x0330e39c, 0x3d419b7e, 0xf2ea7a0e, 0xa398f365,
-    0x6e5db4ea, 0x5cbdf064, 0x087264da, 0xa5082628, 0x13fde7b5, 0xa813d0b8,
-    0x861a54db, 0xa3178d6d, 0xba255960, 0x6aebca40, 0xf78d9755, 0x5af7d9d6,
-    0xec02184a, 0x57ec2f47, 0x79e5ab24, 0x5ce87292, 0x45daa69f, 0x951435bf};
+#define rotr64(a, n) (rotate((a), (64ul - n)))
 
-#define SECP256K1_PRE_COMPUTED_XY_SIZE 96
-#define SECP256K1_NAF_SIZE 33
-
-#define is_zero(n)                                                             \
-  (!n[8] && !n[7] && !n[6] && !n[5] && !n[4] && !n[3] && !n[2] && !n[1] &&     \
-   !n[0])
-
-#define shift_first(aElem, lastValue)                                          \
-  (aElem)[0] = (aElem)[0] >> 1 | (aElem)[1] << 31;                             \
-  (aElem)[1] = (aElem)[1] >> 1 | (aElem)[2] << 31;                             \
-  (aElem)[2] = (aElem)[2] >> 1 | (aElem)[3] << 31;                             \
-  (aElem)[3] = (aElem)[3] >> 1 | (aElem)[4] << 31;                             \
-  (aElem)[4] = (aElem)[4] >> 1 | (aElem)[5] << 31;                             \
-  (aElem)[5] = (aElem)[5] >> 1 | (aElem)[6] << 31;                             \
-  (aElem)[6] = (aElem)[6] >> 1 | (aElem)[7] << 31;                             \
-  (aElem)[7] = lastValue;
-
-#define copy_eight(a, b)                                                       \
-  (a)[0] = (b)[0], (a)[1] = (b)[1], (a)[2] = (b)[2], (a)[3] = (b)[3],          \
-  (a)[4] = (b)[4], (a)[5] = (b)[5], (a)[6] = (b)[6], (a)[7] = (b)[7];
-
-#define is_even(x) !((x)[0] & 1)
-
-uint sub(uint *r, const uint *a, const uint *b) {
-  uint c = 0;
-  uint diff;
-
-  diff = a[0] - b[0] - c;
-  c = (diff != a[0]) ? (diff > a[0]) : c;
-  r[0] = diff;
-  diff = a[1] - b[1] - c;
-  c = (diff != a[1]) ? (diff > a[1]) : c;
-  r[1] = diff;
-  diff = a[2] - b[2] - c;
-  c = (diff != a[2]) ? (diff > a[2]) : c;
-  r[2] = diff;
-  diff = a[3] - b[3] - c;
-  c = (diff != a[3]) ? (diff > a[3]) : c;
-  r[3] = diff;
-  diff = a[4] - b[4] - c;
-  c = (diff != a[4]) ? (diff > a[4]) : c;
-  r[4] = diff;
-  diff = a[5] - b[5] - c;
-  c = (diff != a[5]) ? (diff > a[5]) : c;
-  r[5] = diff;
-  diff = a[6] - b[6] - c;
-  c = (diff != a[6]) ? (diff > a[6]) : c;
-  r[6] = diff;
-  diff = a[7] - b[7] - c;
-  c = (diff != a[7]) ? (diff > a[7]) : c;
-  r[7] = diff;
-  return c;
+inline ulong L0(ulong x) {
+  return rotr64(x, 1ul) ^ rotr64(x, 8ul) ^ (x >> 7ul);
 }
 
-uint add(uint *r, const uint *a, const uint *b) {
-  uint c = 0, t;
-  t = a[0] + b[0] + c;
-  c = (t != a[0]) ? (t < a[0]) : c;
-  r[0] = t;
-  t = a[1] + b[1] + c;
-  c = (t != a[1]) ? (t < a[1]) : c;
-  r[1] = t;
-  t = a[2] + b[2] + c;
-  c = (t != a[2]) ? (t < a[2]) : c;
-  r[2] = t;
-  t = a[3] + b[3] + c;
-  c = (t != a[3]) ? (t < a[3]) : c;
-  r[3] = t;
-  t = a[4] + b[4] + c;
-  c = (t != a[4]) ? (t < a[4]) : c;
-  r[4] = t;
-  t = a[5] + b[5] + c;
-  c = (t != a[5]) ? (t < a[5]) : c;
-  r[5] = t;
-  t = a[6] + b[6] + c;
-  c = (t != a[6]) ? (t < a[6]) : c;
-  r[6] = t;
-  t = a[7] + b[7] + c;
-  c = (t != a[7]) ? (t < a[7]) : c;
-  r[7] = t;
-  return c;
+inline ulong L1(ulong x) {
+  return rotr64(x, 19ul) ^ rotr64(x, 61ul) ^ (x >> 6ul);
 }
 
-inline bool is_less(const uint *a, const uint *b) {
-  for (int i = 7; i >= 0; i--) {
-    if (a[i] < b[i])
-      return true;
-    if (a[i] > b[i])
-      return false;
+#define SHA512_S0(x) (rotr64(x, 28ul) ^ rotr64(x, 34ul) ^ rotr64(x, 39ul))
+#define SHA512_S1(x) (rotr64(x, 14ul) ^ rotr64(x, 18ul) ^ rotr64(x, 41ul))
+
+#define F1(x, y, z) (bitselect(z, y, x))
+#define F0(x, y, z) (bitselect(x, y, ((x) ^ (z))))
+
+#define RoR(a, b, c, d, e, f, g, h, x, K)                                      \
+  {                                                                            \
+    ulong t1 = K + SHA512_S1(e) + F1(e, f, g) + x;                             \
+    ulong t2 = SHA512_S0(a) + F0(a, b, c);                                     \
+    h += t1;                                                                   \
+    d += h, h += t2;                                                           \
   }
-  return false;
-}
-inline void shift_and_add(uint *x, uint *y, const uint *p) {
-  shift_first(x, x[7] >> 1);
-  uint c = 0;
-  if (!is_even(y)) {
-    c = add(y, y, p);
-  }
-  shift_first(y, y[7] >> 1 | c << 31);
-}
+void sha512_procces(ulong *message, ulong *H) {
 
-inline void sub_and_shift(uint *x, const uint *y, uint *z, const uint *w,
-                          const uint *p) {
-  sub(x, x, y);
-  shift_first(x, x[7] >> 1);
-  if (is_less(z, w)) {
-    add(z, z, p);
-  }
-  sub(z, z, w);
+  __private ulong A0 = H[0], A1 = H[1], A2 = H[2], A3 = H[3], A4 = H[4],
+                  A5 = H[5], A6 = H[6], A7 = H[7];
 
-  if (!is_even(z)) {
-    uint c = add(z, z, p);
-    shift_first(z, z[7] >> 1 | c << 31);
-  } else {
-    shift_first(z, z[7] >> 1);
-  }
-}
+  __private ulong W16 =
+      (message[0] + L0(message[1]) + message[9] + L1(message[14]));
+  __private ulong W17 =
+      (message[1] + L0(message[2]) + message[10] + L1(message[15]));
+  __private ulong W18 = (message[2] + L0(message[3]) + message[11] + L1(W16));
+  __private ulong W19 = (message[3] + L0(message[4]) + message[12] + L1(W17));
+  __private ulong W20 = (message[4] + L0(message[5]) + message[13] + L1(W18));
+  __private ulong W21 = (message[5] + L0(message[6]) + message[14] + L1(W19));
+  __private ulong W22 = message[6] + L0(message[7]) + message[15] + L1(W20);
+  __private ulong W23 = message[7] + L0(message[8]) + W16 + L1(W21);
+  __private ulong W24 = message[8] + L0(message[9]) + W17 + L1(W22);
+  __private ulong W25 = message[9] + L0(message[10]) + W18 + L1(W23);
+  __private ulong W26 = message[10] + L0(message[11]) + W19 + L1(W24);
+  __private ulong W27 = message[11] + L0(message[12]) + W20 + L1(W25);
+  __private ulong W28 = message[12] + L0(message[13]) + W21 + L1(W26);
+  __private ulong W29 = message[13] + L0(message[14]) + W22 + L1(W27);
+  __private ulong W30 = message[14] + L0(message[15]) + W23 + L1(W28);
+  __private ulong W31 = message[15] + L0(W16) + W24 + L1(W29);
 
-inline bool is_greater(const uint *a, const uint *b) {
-  for (int i = 7; i >= 0; i--) {
-    if (a[i] != b[i])
-      return (a[i] > b[i]);
-  }
-  return false;
-}
+  __private ulong W32 = W16 + L0(W17) + W25 + L1(W30);
+  __private ulong W33 = W17 + L0(W18) + W26 + L1(W31);
+  __private ulong W34 = W18 + L0(W19) + W27 + L1(W32);
+  __private ulong W35 = W19 + L0(W20) + W28 + L1(W33);
+  __private ulong W36 = W20 + L0(W21) + W29 + L1(W34);
+  __private ulong W37 = W21 + L0(W22) + W30 + L1(W35);
+  __private ulong W38 = W22 + L0(W23) + W31 + L1(W36);
+  __private ulong W39 = W23 + L0(W24) + W32 + L1(W37);
+  __private ulong W40 = W24 + L0(W25) + W33 + L1(W38);
+  __private ulong W41 = W25 + L0(W26) + W34 + L1(W39);
+  __private ulong W42 = W26 + L0(W27) + W35 + L1(W40);
+  __private ulong W43 = W27 + L0(W28) + W36 + L1(W41);
+  __private ulong W44 = W28 + L0(W29) + W37 + L1(W42);
+  __private ulong W45 = W29 + L0(W30) + W38 + L1(W43);
+  __private ulong W46 = W30 + L0(W31) + W39 + L1(W44);
+  __private ulong W47 = W31 + L0(W32) + W40 + L1(W45);
+  __private ulong W48 = W32 + L0(W33) + W41 + L1(W46);
+  __private ulong W49 = W33 + L0(W34) + W42 + L1(W47);
+  __private ulong W50 = W34 + L0(W35) + W43 + L1(W48);
+  __private ulong W51 = W35 + L0(W36) + W44 + L1(W49);
+  __private ulong W52 = W36 + L0(W37) + W45 + L1(W50);
+  __private ulong W53 = W37 + L0(W38) + W46 + L1(W51);
+  __private ulong W54 = W38 + L0(W39) + W47 + L1(W52);
+  __private ulong W55 = W39 + L0(W40) + W48 + L1(W53);
+  __private ulong W56 = W40 + L0(W41) + W49 + L1(W54);
+  __private ulong W57 = W41 + L0(W42) + W50 + L1(W55);
+  __private ulong W58 = W42 + L0(W43) + W51 + L1(W56);
+  __private ulong W59 = W43 + L0(W44) + W52 + L1(W57);
+  __private ulong W60 = W44 + L0(W45) + W53 + L1(W58);
+  __private ulong W61 = W45 + L0(W46) + W54 + L1(W59);
+  __private ulong W62 = W46 + L0(W47) + W55 + L1(W60);
+  __private ulong W63 = W47 + L0(W48) + W56 + L1(W61);
+  __private ulong W64 = W48 + L0(W49) + W57 + L1(W62);
+  __private ulong W65 = W49 + L0(W50) + W58 + L1(W63);
+  __private ulong W66 = W50 + L0(W51) + W59 + L1(W64);
+  __private ulong W67 = W51 + L0(W52) + W60 + L1(W65);
+  __private ulong W68 = W52 + L0(W53) + W61 + L1(W66);
+  __private ulong W69 = W53 + L0(W54) + W62 + L1(W67);
+  __private ulong W70 = W54 + L0(W55) + W63 + L1(W68);
+  __private ulong W71 = W55 + L0(W56) + W64 + L1(W69);
+  __private ulong W72 = W56 + L0(W57) + W65 + L1(W70);
+  __private ulong W73 = W57 + L0(W58) + W66 + L1(W71);
+  __private ulong W74 = W58 + L0(W59) + W67 + L1(W72);
+  __private ulong W75 = W59 + L0(W60) + W68 + L1(W73);
+  __private ulong W76 = W60 + L0(W61) + W69 + L1(W74);
+  __private ulong W77 = W61 + L0(W62) + W70 + L1(W75);
+  __private ulong W78 = W62 + L0(W63) + W71 + L1(W76);
+  __private ulong W79 = W63 + L0(W64) + W72 + L1(W77);
 
-inline bool arrays_equal(const uint *a, const uint *b) {
-  for (int i = 0; i < 8; i++) {
-    if (a[i] != b[i])
-      return false;
-  }
-  return true;
-}
-inline void sub_mod(uint *r, const uint *a, const uint *b) {
-  const uint c = sub(r, a, b);
-  if (c) {
-    uint t[8] = {SECPK256K_VALUES};
-    add(r, r, t);
-  }
-}
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, message[0], 0x428a2f98d728ae22);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, message[1], 0x7137449123ef65cd);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, message[2], 0xb5c0fbcfec4d3b2f);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, message[3], 0xe9b5dba58189dbbc);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, message[4], 0x3956c25bf348b538);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, message[5], 0x59f111f1b605d019);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, message[6], 0x923f82a4af194f9b);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, message[7], 0xab1c5ed5da6d8118);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, message[8], 0xd807aa98a3030242);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, message[9], 0x12835b0145706fbe);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, message[10], 0x243185be4ee4b28c);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, message[11], 0x550c7dc3d5ffb4e2);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, message[12], 0x72be5d74f27b896f);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, message[13], 0x80deb1fe3b1696b1);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, message[14], 0x9bdc06a725c71235);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, message[15], 0xc19bf174cf692694);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W16, 0xe49b69c19ef14ad2);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W17, 0xefbe4786384f25e3);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W18, 0xfc19dc68b8cd5b5);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W19, 0x240ca1cc77ac9c65);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W20, 0x2de92c6f592b0275);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W21, 0x4a7484aa6ea6e483);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W22, 0x5cb0a9dcbd41fbd4);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W23, 0x76f988da831153b5);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W24, 0x983e5152ee66dfab);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W25, 0xa831c66d2db43210);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W26, 0xb00327c898fb213f);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W27, 0xbf597fc7beef0ee4);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W28, 0xc6e00bf33da88fc2);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W29, 0xd5a79147930aa725);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W30, 0x6ca6351e003826f);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W31, 0x142929670a0e6e70);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W32, 0x27b70a8546d22ffc);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W33, 0x2e1b21385c26c926);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W34, 0x4d2c6dfc5ac42aed);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W35, 0x53380d139d95b3df);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W36, 0x650a73548baf63de);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W37, 0x766a0abb3c77b2a8);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W38, 0x81c2c92e47edaee6);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W39, 0x92722c851482353b);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W40, 0xa2bfe8a14cf10364);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W41, 0xa81a664bbc423001);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W42, 0xc24b8b70d0f89791);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W43, 0xc76c51a30654be30);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W44, 0xd192e819d6ef5218);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W45, 0xd69906245565a910);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W46, 0xf40e35855771202a);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W47, 0x106aa07032bbd1b8);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W48, 0x19a4c116b8d2d0c8);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W49, 0x1e376c085141ab53);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W50, 0x2748774cdf8eeb99);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W51, 0x34b0bcb5e19b48a8);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W52, 0x391c0cb3c5c95a63);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W53, 0x4ed8aa4ae3418acb);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W54, 0x5b9cca4f7763e373);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W55, 0x682e6ff3d6b2b8a3);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W56, 0x748f82ee5defb2fc);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W57, 0x78a5636f43172f60);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W58, 0x84c87814a1f0ab72);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W59, 0x8cc702081a6439ec);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W60, 0x90befffa23631e28);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W61, 0xa4506cebde82bde9);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W62, 0xbef9a3f7b2c67915);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W63, 0xc67178f2e372532b);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W64, 0xca273eceea26619c);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W65, 0xd186b8c721c0c207);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W66, 0xeada7dd6cde0eb1e);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W67, 0xf57d4f7fee6ed178);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W68, 0x6f067aa72176fba);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W69, 0xa637dc5a2c898a6);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W70, 0x113f9804bef90dae);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W71, 0x1b710b35131c471b);
+  RoR(A0, A1, A2, A3, A4, A5, A6, A7, W72, 0x28db77f523047d84);
+  RoR(A7, A0, A1, A2, A3, A4, A5, A6, W73, 0x32caab7b40c72493);
+  RoR(A6, A7, A0, A1, A2, A3, A4, A5, W74, 0x3c9ebe0a15c9bebc);
+  RoR(A5, A6, A7, A0, A1, A2, A3, A4, W75, 0x431d67c49c100d4c);
+  RoR(A4, A5, A6, A7, A0, A1, A2, A3, W76, 0x4cc5d4becb3e42b6);
+  RoR(A3, A4, A5, A6, A7, A0, A1, A2, W77, 0x597f299cfc657e2a);
+  RoR(A2, A3, A4, A5, A6, A7, A0, A1, W78, 0x5fcb6fab3ad6faec);
+  RoR(A1, A2, A3, A4, A5, A6, A7, A0, W79, 0x6c44198c4a475817);
 
-inline void add_mod(uint *r, const uint *a, const uint *b) {
-  uint t[8] = {SECPK256K_VALUES};
-  if (!add(r, a, b)) {
-    for (int i = 7; i >= 0; i--) {
-      if (r[i] < t[i]) {
-        return;
-      }
-      if (r[i] > t[i]) {
-        break;
-      }
-    }
-  }
-  sub(r, r, t);
-}
-
-void mul_mod(uint *r, const uint *a, const uint *b) {
-  uint t[16] = {0};
-  uint t0 = 0;
-  uint t1 = 0;
-  uint c = 0;
-  for (uint i = 0; i < 8; i++) {
-    for (uint j = 0; j <= i; j++) {
-      ulong p = ((ulong)a[j]) * b[i - j];
-      ulong d = ((ulong)t1) << 32 | t0;
-
-      d += p;
-      t0 = (uint)d;
-      t1 = d >> 32;
-      c += d < p;
-    }
-
-    t[i] = t0;
-    t0 = t1;
-    t1 = c;
-    c = 0;
-  }
-
-  for (uint i = 8; i < 15; i++) {
-    for (uint j = i - 7; j < 8; j++) {
-      ulong p = ((ulong)a[j]) * b[i - j];
-      ulong d = ((ulong)t1) << 32 | t0;
-      d += p;
-      t0 = (uint)d;
-      t1 = d >> 32;
-      c += d < p;
-    }
-    t[i] = t0;
-    t0 = t1;
-    t1 = c;
-    c = 0;
-  }
-
-  t[15] = t0;
-  uint tmp[16] = {0};
-  for (uint i = 0, j = 8; i < 8; i++, j++) {
-    ulong p = ((ulong)0x03d1) * t[j] + c;
-    tmp[i] = (uint)p;
-    c = p >> 32;
-  }
-  tmp[8] = c;
-  c = add(tmp + 1, tmp + 1, t + 8);
-  tmp[9] = c;
-  c = add(r, t, tmp);
-  uint c2 = 0;
-  for (uint i = 0, j = 8; i < 8; i++, j++) {
-    ulong p = ((ulong)0x3d1) * tmp[j] + c2;
-    t[i] = (uint)p;
-    c2 = p >> 32;
-  }
-
-  t[8] = c2;
-  c2 = add(t + 1, t + 1, tmp + 8);
-  t[9] = c2;
-
-  uint h[8] = {SECPK256K_VALUES};
-  for (uint i = c + add(r, r, t); i > 0; i--) {
-    sub(r, r, h);
-  }
-  for (int i = 7; i >= 0; i--) {
-    if (r[i] < h[i])
-      break;
-    if (r[i] > h[i]) {
-      sub(r, r, h);
-      break;
-    }
-  }
-}
-
-void inv_mod(uint *a) {
-  uint t0[8] = {a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]};
-  uint p[8] = {SECPK256K_VALUES};
-  uint t1[8] = {SECPK256K_VALUES};
-  uint t2[8] = {0x00000001, 0, 0, 0, 0, 0, 0, 0};
-  uint t3[8] = {0};
-
-  while (!arrays_equal(t0, t1)) {
-    if (is_even(t0)) {
-      shift_and_add(t0, t2, p);
-    } else if (is_even(t1)) {
-      shift_and_add(t1, t3, p);
-    } else {
-      if (is_greater(t0, t1)) {
-        sub_and_shift(t0, t1, t2, t3, p);
-      } else {
-        sub_and_shift(t1, t0, t3, t2, p);
-      }
-    }
-  }
-  copy_eight(a, t2);
-}
-
-void point_double(uint *x, uint *y, uint *z) {
-
-  uint t1[8];
-  uint t2[8];
-  uint t3[8] = {z[0], z[1], z[2], z[3], z[4], z[5], z[6], z[7]};
-  uint t4[8];
-  uint t5[8];
-  uint t6[8];
-  copy_eight(t2, y);
-  mul_mod(t4, x, x);
-  mul_mod(t5, y, y);
-  mul_mod(t3, y, z);
-  mul_mod(t1, x, t5);
-  mul_mod(t5, t5, t5);
-  add_mod(t2, t4, t4);
-  add_mod(t4, t4, t2);
-  uint c = 0;
-  if (t4[0] & 1) {
-    uint t[8] = {SECPK256K_VALUES};
-    c = add(t4, t4, t);
-  }
-  shift_first(t4, t4[7] >> 1 | c << 31);
-  mul_mod(t6, t4, t4);
-  add_mod(t2, t1, t1);
-  sub_mod(t6, t6, t2);
-  sub_mod(t1, t1, t6);
-  mul_mod(t4, t4, t1);
-  sub_mod(t1, t4, t5);
-
-  copy_eight(x, t6);
-  copy_eight(y, t1);
-  copy_eight(z, t3);
+  H[0] += A0;
+  H[1] += A1;
+  H[2] += A2;
+  H[3] += A3;
+  H[4] += A4;
+  H[5] += A5;
+  H[6] += A6;
+  H[7] += A7;
 }
 
-void point_add(uint *x1, uint *y1, uint *z1, __constant uint *x2,
-               __constant uint *y2) // z2 = 1
-{
-
-  uint t1[8];
-  uint t2[8];
-  uint t3[8];
-  uint t4[8];
-  uint t5[8];
-  uint t6[8];
-  uint t7[8];
-  uint t8[8];
-  uint t9[8];
-
-  copy_eight(t1, x1);
-  copy_eight(t2, y1);
-  copy_eight(t3, z1);
-  copy_eight(t4, x2);
-  copy_eight(t5, y2);
-
-  mul_mod(t6, t3, t3); // t6 = t3^2
-
-  mul_mod(t7, t6, t3); // t7 = t6*t3
-  mul_mod(t6, t6, t4); // t6 = t6*t4
-  mul_mod(t7, t7, t5); // t7 = t7*t5
-
-  sub_mod(t6, t6, t1); // t6 = t6-t1
-  sub_mod(t7, t7, t2); // t7 = t7-t2
-
-  mul_mod(t8, t3, t6); // t8 = t3*t6
-  mul_mod(t4, t6, t6); // t4 = t6^2
-  mul_mod(t9, t4, t6); // t9 = t4*t6
-  mul_mod(t4, t4, t1); // t4 = t4*t1
-
-  t6[7] = t4[7] << 1 | t4[6] >> 31;
-  t6[6] = t4[6] << 1 | t4[5] >> 31;
-  t6[5] = t4[5] << 1 | t4[4] >> 31;
-  t6[4] = t4[4] << 1 | t4[3] >> 31;
-  t6[3] = t4[3] << 1 | t4[2] >> 31;
-  t6[2] = t4[2] << 1 | t4[1] >> 31;
-  t6[1] = t4[1] << 1 | t4[0] >> 31;
-  t6[0] = t4[0] << 1;
-
-  if (t4[7] & 0x80000000) {
-    uint a[8] = {0x000003d1, 1, 0, 0, 0, 0, 0, 0};
-    add(t6, t6, a);
-  }
-
-  mul_mod(t5, t7, t7); // t5 = t7*t7
-  sub_mod(t5, t5, t6); // t5 = t5-t6
-  sub_mod(t5, t5, t9); // t5 = t5-t9
-  sub_mod(t4, t4, t5); // t4 = t4-t5
-  mul_mod(t4, t4, t7); // t4 = t4*t7
-  mul_mod(t9, t9, t2); // t9 = t9*t2
-  sub_mod(t9, t4, t9); // t9 = t4-t9
-
-  copy_eight(x1, t5);
-  copy_eight(y1, t9);
-  copy_eight(z1, t8);
+void sha512_hash_two_blocks_message(ulong *message, ulong *H) {
+  INIT_SHA512(H);
+  sha512_procces(message, H);
+  sha512_procces(message + 16, H);
 }
 
-uint msb_point(uint *n) {
-  uint msb = 256;
-  for (int i = 8; i >= 0; i--) {
-    if (n[i]) {
-      msb = i * 32 + 31 - __builtin_clz(n[i]);
-      break;
-    }
-  }
-  return msb;
-}
-int convert_to_window_naf(uint *naf, const uint *k) {
-  int loop_start = 0;
-  uint n[9] = {0, k[7], k[6], k[5], k[4], k[3], k[2], k[1], k[0]};
-
-  // Encontre o MSB do número (último bit relevante)
-  uint msb = msb_point(n);
-
-  for (int i = 0; i <= msb; i++) {
-    if (n[8] & 1) {
-      int diff = n[8] & 0x0f;
-      int val = diff;
-
-      if (diff >= 0x08) {
-        diff -= 0x10;
-        val = 0x11 - val;
-      }
-
-      naf[i >> 3] |= val << ((i & 7) << 2);
-
-      uint t = n[8];
-      n[8] -= diff;
-
-      uint k = 8;
-
-      while (k > 0 && ((diff > 0 && n[k] > t) || (diff < 0 && t > n[k]))) {
-        k--;
-        t = n[k];
-        n[k] += (diff > 0) ? -1 : 1;
-      }
-
-      loop_start = i;
-    }
-
-    for (int j = 8; j > 0; j--) {
-      n[j] = (n[j] >> 1) | (n[j - 1] << 31);
-    }
-
-    n[0] >>= 1;
-
-    if (is_zero(n)) {
-      break;
-    }
-  }
-
-  return loop_start;
-}
-
-void point_mul_xy(uint *x1, uint *y1, const uint *k) {
-  uint naf[SECP256K1_NAF_SIZE] = {0};
-  int loop_start = convert_to_window_naf(naf, k);
-  const uint multiplier =
-      (naf[loop_start >> 3] >> ((loop_start & 7) << 2)) & 0x0f;
-
-  const uint odd = multiplier & 1;
-
-  const uint x_pos = ((multiplier - 1 + odd) >> 1) * 24;
-  const uint y_pos = odd ? (x_pos + 8) : (x_pos + 16);
-
-  copy_eight(x1, secpk256PreComputed + x_pos);
-  copy_eight(y1, secpk256PreComputed + y_pos);
-  uint z1[8] = {1, 0, 0, 0, 0, 0, 0, 0};
-
-  for (int pos = loop_start - 1; pos >= 0; pos--) {
-    point_double(x1, y1, z1);
-    const uint multiplier = (naf[pos >> 3] >> ((pos & 7) << 2)) & 0x0f;
-
-    if (multiplier) {
-      const uint odd = multiplier & 1;
-      const uint x_pos = ((multiplier - 1 + odd) >> 1) * 24;
-      const uint y_pos = odd ? (x_pos + 8) : (x_pos + 16);
-      point_add(x1, y1, z1, secpk256PreComputed + x_pos,
-                secpk256PreComputed + y_pos);
-    }
-  }
-  inv_mod(z1);
-  uint z2[8];
-  mul_mod(z2, z1, z1);
-  mul_mod(x1, x1, z2);
-  mul_mod(z1, z2, z1);
-  mul_mod(y1, y1, z1);
-}
-
+#include "kernel/hmac_sha512.cl"
+#include "kernel/pbkdf2_hmac_sha512.cl"
+#include "kernel/derive.cl"

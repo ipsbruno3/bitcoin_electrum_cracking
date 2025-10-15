@@ -41,21 +41,6 @@ inline bool strcmp(uchar *str1, uchar *str2) {
 }
 
 
-inline void uchar_to_ulong(const uchar *input, uint input_len, ulong *output,
-                           const uchar offset) {
-  const uchar num_ulongs = (input_len + 7) / 8;
-  for (uchar i = offset; i < num_ulongs; i++) {
-    const uchar baseIndex = i * 8;
-    output[i] = ((ulong)input[baseIndex] << 56UL) |
-                ((ulong)input[baseIndex + 1] << 48UL) |
-                ((ulong)input[baseIndex + 2] << 40UL) |
-                ((ulong)input[baseIndex + 3] << 32UL) |
-                ((ulong)input[baseIndex + 4] << 24UL) |
-                ((ulong)input[baseIndex + 5] << 16UL) |
-                ((ulong)input[baseIndex + 6] << 8UL) |
-                ((ulong)input[baseIndex + 7]);
-  }
-}
 
 inline void ulong_array_to_char(const ulong *input, uint input_len,
                                 uchar *output) {
@@ -193,5 +178,5 @@ void *memcpy(void *dest, const void *src, size_t n) {
   seedNum[8] = (memLow & (2047UL << 29UL)) >> 29UL;                            \
   seedNum[9] = (memLow & (2047UL << 18UL)) >> 18UL;                            \
   seedNum[10] = (memLow & (2047UL << 7UL)) >> 7UL;                             \
-  seedNum[11] =                                                                \
-      (memLow << 57UL) >> 53UL | sha256_from_byte(memHigh, memLow) >> 4UL;
+  seedNum[11] =  memLow % 2048
+  
