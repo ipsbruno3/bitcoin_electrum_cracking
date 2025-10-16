@@ -6,3 +6,6 @@ node_modules
 Bitcoin_addresses_LATEST.txt.gz
 .git
 Bitcoin_addresses_LATEST.txt.gz.bc-tb.t64.pkl.gz
+Bitcoin_addresses_LATEST.txt.t64.sqlite-wal
+Bitcoin_addresses_LATEST.txt.t64.sqlite-shm
+Bitcoin_addresses_LATEST.txt.t64.sqlite

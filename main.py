@@ -9,14 +9,36 @@ from mnemonic import Mnemonic
 from collections import defaultdict
 import os, gzip, pickle
 
+
+plats = cl.get_platforms()
+dev = None
+for p in plats:
+    gpus = [d for d in p.get_devices() if d.type & cl.device_type.GPU]
+    if gpus:
+        dev = gpus[0]
+        break
+if dev is None:
+    dev = plats[0].get_devices()[0]
+
+ctx = cl.Context([dev])
+queue = cl.CommandQueue(ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+# nome do device
+device_name = dev.name.strip()
+platform_name = dev.platform.name.strip()
+
+print(f"[INFO] Usando plataforma: {platform_name}")
+print(f"[INFO] Device ativo: {device_name}")
+
+
 # ----------------- Config básica -----------------
 mnemo = Mnemonic("english")
 load_dotenv()
-SEED = os.getenv("SEED")
-MAX_GROUPS = 1_000_000_000
-MAX_RETRIES = 1000
-INIT =595
-MAX_HITS = 100_000_000
+SEED = os.getenv("SEED", "? ? ? ? ? ? ? ? ? ? ?")
+MAX_GROUPS = int(os.getenv("MAX_GROUPS") or 1_000_000)
+MAX_RETRIES = int(os.getenv("MAX_RETRIES") or 1000)
+INIT = int(os.getenv("INIT") or 0)
+MAX_HITS = int(os.getenv("MAX_HITS") or 100_000)
 
 print(f"Seed para Buscar: {SEED}")
 
@@ -49,15 +71,22 @@ def tag64_fold_32(prog32: bytes) -> int:
     d = int.from_bytes(prog32[24:32],"little")
     return a ^ b ^ c ^ d
 
+from collections import defaultdict
+import os, gzip, pickle
+
+# Assumo que você já tem estas duas:
+# def decode_addr(addr: str): -> (hrp: str, ver: int, prog: bytes)
+# def tag64_from_h160_prefix8(h160: bytes) -> int
 
 def montar_indice_tag64(base_gz: str, hrps=("bc", "tb"), usar_cache=True, force=False):
     hrps = tuple(h.lower() for h in hrps)
     prefixes = tuple(h + "1" for h in hrps)
 
-
+    # cache: um arquivo ao lado do .gz, com HRPs no nome
     hrps_key = "-".join(sorted(hrps))
     cache_file = f"{base_gz}.{hrps_key}.t64.pkl.gz"
 
+    # tenta ler do cache se for mais novo que o .gz
     if usar_cache and not force and os.path.exists(cache_file):
         try:
             if os.path.getmtime(cache_file) >= os.path.getmtime(base_gz):
@@ -68,7 +97,9 @@ def montar_indice_tag64(base_gz: str, hrps=("bc", "tb"), usar_cache=True, force=
                     index = defaultdict(list, index)
                 return index, set(addr_set), stats
         except Exception:
-            pass 
+            pass  # cache quebrado? ignora e reconstrói
+
+    # reconstrói do zero
     index = defaultdict(list)
     addr_set = set()
     total = valid = 0
@@ -95,14 +126,16 @@ def montar_indice_tag64(base_gz: str, hrps=("bc", "tb"), usar_cache=True, force=
 
     stats = {"linhas_lidas": total, "enderecos_v0": valid, "tags_unicas": len(index)}
 
+    # salva cache (bem simples)
     if usar_cache:
         try:
             with gzip.open(cache_file, "wb") as f:
+                # salva como dict normal para não depender do pickle de defaultdict
                 pickle.dump((dict(index), addr_set, stats), f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception:
-            pass 
-    return index, addr_set, stats
+            pass  # se falhar salvar, paciência
 
+    return index, addr_set, stats
 
 def build_program(ctx, kernel_path="./kernel/main.cl"):
     with open(kernel_path, "r", encoding="utf-8") as f:
@@ -214,14 +247,14 @@ if __name__ == "__main__":
 
     FIXED_WORDS = SEED.replace('?', 'abandon').split()
     indices = words_to_indices(FIXED_WORDS)
-    print("indices:", indices)
+    print("Seed Indices:", indices)
 
     high, low = mnemonic_to_uint64_pair(indices)
 
     i = INIT
     while(i < MAX_RETRIES): 
         res = run(high, low, i, index, addr_set)     
-        print(i, res)   
+        print(device_name, i, res)   
         i+=1
     
     
