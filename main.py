@@ -6,6 +6,8 @@ import numpy as np
 import pyopencl as cl
 from dotenv import load_dotenv
 from mnemonic import Mnemonic
+from collections import defaultdict
+import os, gzip, pickle
 
 # ----------------- Config básica -----------------
 mnemo = Mnemonic("english")
@@ -13,8 +15,8 @@ load_dotenv()
 SEED = os.getenv("SEED")
 MAX_GROUPS = 1_000_000_000
 MAX_RETRIES = 1000
-INIT = 100
-MAX_HITS = 10_000_0000
+INIT =595
+MAX_HITS = 100_000_000
 
 print(f"Seed para Buscar: {SEED}")
 
@@ -47,34 +49,60 @@ def tag64_fold_32(prog32: bytes) -> int:
     d = int.from_bytes(prog32[24:32],"little")
     return a ^ b ^ c ^ d
 
-# ----------------- Índice por tag64 ----------------
-def montar_indice_tag64(base_gz: str, hrps=("bc", "tb")):
+
+def montar_indice_tag64(base_gz: str, hrps=("bc", "tb"), usar_cache=True, force=False):
+    hrps = tuple(h.lower() for h in hrps)
+    prefixes = tuple(h + "1" for h in hrps)
+
+
+    hrps_key = "-".join(sorted(hrps))
+    cache_file = f"{base_gz}.{hrps_key}.t64.pkl.gz"
+
+    if usar_cache and not force and os.path.exists(cache_file):
+        try:
+            if os.path.getmtime(cache_file) >= os.path.getmtime(base_gz):
+                with gzip.open(cache_file, "rb") as f:
+                    index, addr_set, stats = pickle.load(f)
+                # garante tipo no retorno
+                if not isinstance(index, defaultdict):
+                    index = defaultdict(list, index)
+                return index, set(addr_set), stats
+        except Exception:
+            pass 
     index = defaultdict(list)
     addr_set = set()
     total = valid = 0
+
     with gzip.open(base_gz, "rt", encoding="utf-8", errors="ignore") as f:
         for line in f:
             s = line.strip()
             if not s:
                 continue
             total += 1
-            addr = s.split()[0]
-            if not (addr.startswith("bc1") or addr.startswith("tb1")):
+            addr = s.split(None, 1)[0]
+            if not addr.startswith(prefixes):
                 continue
             try:
                 hrp, ver, prog = decode_addr(addr)
             except Exception:
                 continue
-            if hrp not in hrps:
-                continue
-            if ver != 0 or len(prog) != 20:
+            if hrp not in hrps or ver != 0 or len(prog) != 20:
                 continue
             t64 = tag64_from_h160_prefix8(prog)
             index[t64].append((ver, prog, addr))
             addr_set.add(addr)
             valid += 1
+
     stats = {"linhas_lidas": total, "enderecos_v0": valid, "tags_unicas": len(index)}
+
+    if usar_cache:
+        try:
+            with gzip.open(cache_file, "wb") as f:
+                pickle.dump((dict(index), addr_set, stats), f, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception:
+            pass 
     return index, addr_set, stats
+
 
 def build_program(ctx, kernel_path="./kernel/main.cl"):
     with open(kernel_path, "r", encoding="utf-8") as f:
