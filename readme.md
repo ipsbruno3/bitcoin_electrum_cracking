@@ -5,7 +5,7 @@
 
 <img width="817" height="305" alt="ascii-art-text-removebg-preview" src="https://github.com/user-attachments/assets/b9808a4b-e950-44e9-bd22-4e74563598c1" />
 
-**Attention** This pipeline hit ~65 quintillion seed‑vs‑wallet checks in one day on a 4070 Laptop GPU. Yes, really. 🚀
+**Attention** This pipeline hit ~4 quadrillion seed‑vs‑wallet checks in one day on a 4070 Laptop GPU. Yes, really. 🚀
 
 🧬 **Bruno da Silva** — Security Researcher | Blockchain & Cryptography  
 📧 [bsbruno@proton.me](mailto:bsbruno@proton.me)  
@@ -790,6 +790,7 @@ Because the data layout and conversions are minimized (and happen only at bounda
 -
 
 -
+
 
 
 **End of document.**
