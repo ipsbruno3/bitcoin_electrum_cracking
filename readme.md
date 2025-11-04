@@ -16,8 +16,12 @@ ___
 
 ---
 
-> **Use:** For **legitimate self‑recovery** only.
 
+
+<img width="882" height="211" alt="image" src="https://github.com/user-attachments/assets/9ef356c6-35f2-41e3-b576-dd43b4552f24" />
+> **Use:** For **legitimate self‑recovery** only.
+> **Open** Source
+> You can check every code
 ---
 
 ## 1) Context and Structural Differences
@@ -794,3 +798,4 @@ Because the data layout and conversions are minimized (and happen only at bounda
 
 
 **End of document.**
+
