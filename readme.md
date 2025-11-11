@@ -18,7 +18,6 @@ ___
 
 
 
-<img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/9ef356c6-35f2-41e3-b576-dd43b4552f24" />
 
 -- **Use:** For **legitimate self‑recovery** only.
 
@@ -801,5 +800,6 @@ Because the data layout and conversions are minimized (and happen only at bounda
 
 
 **End of document.**
+
 
 
